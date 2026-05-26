@@ -4,7 +4,6 @@ set -euo pipefail
 target="${1:-.}"
 
 patterns=(
-  "steveleclair.info"
   "/var/www"
   "README-private"
   "gemini-aoede"
