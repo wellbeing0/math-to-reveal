@@ -1,0 +1,24 @@
+{
+  "name": "math-to-reveal",
+  "version": "0.1.0",
+  "description": "Browser-first elementary math practice with video reveal rewards.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wellbeing0/math-to-reveal.git"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "test": "vitest run src",
+    "test:e2e": "playwright test",
+    "check:public-clean": "bash scripts/check-public-clean.sh ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.3",
+    "vitest": "^4.1.7"
+  }
+}

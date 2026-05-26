@@ -1,0 +1,24 @@
+schema: spec-driven
+
+context: |
+  Project: math-to-reveal, a browser-first elementary math practice game.
+  Audience: early elementary children, primarily playing on tablets and phones.
+  Stack target: TypeScript, Vite, Vitest, Playwright unless implementation later chooses otherwise.
+  Initial status: public source release.
+  Design posture: child play should be simple, touch-friendly, rewarding, and uncluttered; adult settings stay separated.
+  Verification expectation: deterministic unit tests for math generation plus Playwright coverage for iPad child flows.
+
+rules:
+  proposal:
+    - State the child learning problem and adult-maintenance problem separately when both apply.
+    - Call out privacy, licensing, and paid API/service implications.
+  specs:
+    - Use observable scenarios that can become Vitest or Playwright coverage.
+    - Include iPad/Safari behavior when the feature touches child gameplay.
+  design:
+    - Prefer static/local assets and deterministic logic over runtime network dependencies.
+    - Keep child-facing controls large and avoid worksheet-density screens.
+    - Include reduced-motion, audio lifecycle, and local persistence behavior where relevant.
+  tasks:
+    - Include review gates before implementation.
+    - Include verification tasks and docs/memory updates.

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Kitten adding one plus one equals two">
+  <rect width="512" height="512" rx="112" fill="#f6f0df"/>
+  <circle cx="256" cy="256" r="166" fill="#92d6b5"/>
+  <path d="M131 231c6-58 53-105 110-115l-45-65c-5-7 3-16 11-12l77 43c35 5 67 22 91 48l61-30c8-4 16 6 10 13l-42 56c14 27 19 58 14 91-12 78-82 137-158 132-79-5-138-75-129-161z" fill="#f0b46f"/>
+  <path d="M199 73l34 50c-26 9-47 27-62 50l-36-82c-4-9 6-18 15-13zM399 130l-38 32c17 20 28 44 31 70l54-81c6-9-7-27-18-21z" fill="#d78b42"/>
+  <circle cx="209" cy="231" r="17" fill="#25352f"/>
+  <circle cx="307" cy="231" r="17" fill="#25352f"/>
+  <circle cx="215" cy="225" r="5" fill="#fff9ef"/>
+  <circle cx="313" cy="225" r="5" fill="#fff9ef"/>
+  <path d="M249 261c5-7 15-7 20 0l8 11c4 6 0 14-7 14h-22c-7 0-11-8-7-14z" fill="#9b5a45"/>
+  <path d="M234 304c15 16 40 16 55 0" fill="none" stroke="#7a4937" stroke-width="10" stroke-linecap="round"/>
+  <rect x="92" y="334" width="328" height="104" rx="22" fill="#fffaf1" stroke="#263a32" stroke-width="10"/>
+  <text x="256" y="407" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="58" font-weight="800" fill="#263a32">1 + 1 = 2</text>
+  <circle cx="126" cy="315" r="22" fill="#f7d36f" stroke="#263a32" stroke-width="8"/>
+  <circle cx="386" cy="315" r="22" fill="#f7d36f" stroke="#263a32" stroke-width="8"/>
+  <path d="M158 332c-13-2-24-10-32-22M354 332c13-2 24-10 32-22" fill="none" stroke="#d78b42" stroke-width="18" stroke-linecap="round"/>
+</svg>
