@@ -8,7 +8,7 @@ Use this checklist before creating or updating the public release repo.
 - [x] Public shape: separate sanitized public repo.
 - [x] Canonical source through v0.1.0: private repo.
 - [x] Public reward media: one Pexels video sample.
-- [x] Public instruction audio: no Gemini WAVs; browser speech fallback.
+- [x] Public instruction audio: browser speech fallback.
 - [x] Public repo name and location confirmed: `wellbeing0/math-to-reveal`.
 
 ## Local Gates
@@ -25,12 +25,11 @@ Use this checklist before creating or updating the public release repo.
 ## Public Export
 
 - [x] Export only public-safe source, tests, docs, OpenSpec baselines, and the approved sample asset.
-- [x] Exclude private overlay files, generated Gemini WAVs, protected deployment scripts, VPS paths, private domains, handoff notes, dist/, reports, and local state.
+- [x] Exclude private assets, deployment operations, dist/, reports, and local state.
 - [x] Verify docs/asset-policy.md matches the exported assets.
 - [ ] Tag v0.1.0 only after Steve approves this checklist.
 
 ## Private Family Verification
 
-- [x] Private overlay still provides the current family reward videos and posters in the private canonical repo.
-- [x] Private overlay still provides Gemini Aoede instruction WAVs in the private canonical repo.
+- [x] Private canonical repo still provides family-specific media needed for family deployment.
 - [ ] Protected family deployment smoke check passes after the final public-source release tag.

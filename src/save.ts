@@ -22,6 +22,11 @@ export interface MathSave {
 }
 
 const SAVE_KEY = "math-to-reveal-save-v1";
+const BROKEN_SAVE_PREFIX = SAVE_KEY + "-broken-";
+
+export type SaveLoadStatus = "ok" | "corrupt-recovered" | "storage-unavailable";
+
+let lastLoadStatus: SaveLoadStatus = "ok";
 
 export const DEFAULT_SAVE: MathSave = {
   version: 5,
@@ -34,11 +39,19 @@ export const DEFAULT_SAVE: MathSave = {
 };
 
 export function loadSave(storage: Storage): MathSave {
+  lastLoadStatus = "ok";
+  let raw: string | null = null;
   try {
-    const raw = storage.getItem(SAVE_KEY);
+    raw = storage.getItem(SAVE_KEY);
     if (!raw) {
       return DEFAULT_SAVE;
     }
+  } catch {
+    lastLoadStatus = "storage-unavailable";
+    return DEFAULT_SAVE;
+  }
+
+  try {
     const parsed = JSON.parse(raw) as Partial<MathSave>;
     return {
       version: 5,
@@ -50,8 +63,14 @@ export function loadSave(storage: Storage): MathSave {
       pathProgress: normalizePathProgress(parsed.pathProgress)
     };
   } catch {
+    lastLoadStatus = "corrupt-recovered";
+    preserveCorruptedSave(storage, raw);
     return DEFAULT_SAVE;
   }
+}
+
+export function getLastLoadSaveStatus(): SaveLoadStatus {
+  return lastLoadStatus;
 }
 
 export function saveGame(storage: Storage, save: MathSave): boolean {
@@ -77,6 +96,15 @@ export function canUseStorage(storage: Storage): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+function preserveCorruptedSave(storage: Storage, raw: string): void {
+  try {
+    storage.setItem(BROKEN_SAVE_PREFIX + String(Date.now()), raw);
+    storage.removeItem(SAVE_KEY);
+  } catch {
+    // If storage is unavailable, keep gameplay usable with in-memory defaults.
   }
 }
 

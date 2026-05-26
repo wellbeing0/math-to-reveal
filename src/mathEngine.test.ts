@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateInstructionAudioManifest } from "./instructionAudio";
 import { buildChoices, createSeededRandom, eligiblePaths, generatePrompt, normalizeSettings, validateAnswer } from "./mathEngine";
-import { DEFAULT_SAVE, canUseStorage, loadSave, pathProgressKeyFor, resetSave, saveGame } from "./save";
+import { DEFAULT_SAVE, canUseStorage, getLastLoadSaveStatus, loadSave, pathProgressKeyFor, resetSave, saveGame } from "./save";
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -115,6 +115,9 @@ describe("Math to Reveal engine", () => {
     const corrupted = new MemoryStorage();
     corrupted.setItem("math-to-reveal-save-v1", "not-json");
     expect(loadSave(corrupted)).toEqual(DEFAULT_SAVE);
+    expect(getLastLoadSaveStatus()).toBe("corrupt-recovered");
+    expect(corrupted.getItem("math-to-reveal-save-v1")).toBeNull();
+    expect(Array.from({ length: corrupted.length }, (_, index) => corrupted.key(index)).some((key) => key?.startsWith("math-to-reveal-save-v1-broken-"))).toBe(true);
 
     const partial = new MemoryStorage();
     partial.setItem("math-to-reveal-save-v1", JSON.stringify({
@@ -143,6 +146,7 @@ describe("Math to Reveal engine", () => {
 
     expect(canUseStorage(storage)).toBe(false);
     expect(loadSave(storage)).toEqual(DEFAULT_SAVE);
+    expect(getLastLoadSaveStatus()).toBe("storage-unavailable");
     expect(saveGame(storage, { ...DEFAULT_SAVE, completedPrompts: 1 })).toBe(false);
     expect(resetSave(storage, DEFAULT_SAVE.settings)).toEqual(DEFAULT_SAVE);
   });
@@ -220,6 +224,35 @@ describe("Math to Reveal engine", () => {
     expect(prompts.some((prompt) => typeof prompt.metadata.answer === "string")).toBe(true);
     expect(prompts.some((prompt) => prompt.operation === "decimal" && prompt.metadata.decimalPlace === "hundredths")).toBe(true);
     expect(prompts.some((prompt) => prompt.audioInstructionId)).toBe(true);
+  });
+
+  it("keeps generated part models internally valid across fractions and decimals", () => {
+    const settings = normalizeSettings({
+      gradeLane: "grade4",
+      enabledOperations: ["fraction", "decimal"],
+      fractionModes: ["name", "match", "compare", "equivalent", "addSubtract"],
+      decimalModes: ["name", "match", "compare", "equivalent", "addSubtract"],
+      decimalPlace: "tenths"
+    });
+
+    for (let seed = 1; seed <= 200; seed += 1) {
+      const prompt = generatePrompt({
+        path: seed % 2 === 0 ? "fractions" : "decimals",
+        settings,
+        promptIndex: seed,
+        random: createSeededRandom(seed)
+      });
+      expect(validateAnswer(prompt, prompt.metadata.answer)).toBe(true);
+      for (const part of partModels(prompt)) {
+        expect(part.colored).toBeGreaterThanOrEqual(0);
+        expect(part.colored).toBeLessThanOrEqual(part.total);
+        expect(part.total).toBeGreaterThan(0);
+      }
+      if (prompt.operation === "decimal" && prompt.metadata.mode === "addSubtract") {
+        expect(prompt.visualOperation).toBeDefined();
+        expect(prompt.visualOperation?.result.colored ?? 0).toBeLessThan(prompt.visualOperation?.result.total ?? 0);
+      }
+    }
   });
 
   it("combines selected grade lanes into one child path set", () => {
@@ -310,3 +343,20 @@ describe("Math to Reveal engine", () => {
     expect(loadSave(storage).pathProgress).toEqual({});
   });
 });
+
+function partModels(prompt: ReturnType<typeof generatePrompt>) {
+  const parts = [];
+  if (prompt.visualPart) {
+    parts.push(prompt.visualPart);
+  }
+  if (prompt.visualCompare) {
+    parts.push(prompt.visualCompare.left, prompt.visualCompare.right);
+  }
+  if (prompt.visualEquivalent) {
+    parts.push(...prompt.visualEquivalent.models);
+  }
+  if (prompt.visualOperation) {
+    parts.push(prompt.visualOperation.left, prompt.visualOperation.right, prompt.visualOperation.result);
+  }
+  return parts;
+}

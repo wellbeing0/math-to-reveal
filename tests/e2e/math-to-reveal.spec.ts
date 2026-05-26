@@ -229,6 +229,63 @@ test("unfinished path progress is restored until reset", async ({ page }) => {
   await expect(page.getByText("Solved 0 of 3")).toBeVisible();
 });
 
+test("completing a path preserves saved progress for the same path in another grade", async ({ page }) => {
+  await page.addInitScript((key) => {
+    window.localStorage.setItem(key, JSON.stringify({
+      version: 5,
+      completedPrompts: 0,
+      completedSessions: 0,
+      revealedPieces: 0,
+      bestStreak: 0,
+      settings: {
+        gradeLane: "grade2",
+        gradeLanes: ["grade1", "grade2"],
+        enabledOperations: ["add"],
+        maxAddend: 99,
+        maxAnswer: 100,
+        sessionLength: 3,
+        reducedMotion: false,
+        allowRegrouping: false,
+        enableFractions: false,
+        enableDecimals: false,
+        decimalPlace: "tenths",
+        fractionModes: ["name", "match", "compare"],
+        decimalModes: ["name", "match", "compare"]
+      },
+      pathProgress: {
+        "grade1:add": {
+          path: "add",
+          gradeLane: "grade1",
+          promptIndex: 2,
+          seed: 111,
+          correct: 2,
+          mistakes: 0,
+          streak: 2,
+          answeredPromptIds: ["add-0-1-2"]
+        },
+        "grade2:add": {
+          path: "add",
+          gradeLane: "grade2",
+          promptIndex: 2,
+          seed: 222,
+          correct: 2,
+          mistakes: 0,
+          streak: 2,
+          answeredPromptIds: ["add-0-20-20", "add-1-21-20"]
+        }
+      }
+    }));
+  }, saveKey);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Add/ }).tap();
+  await answerCurrentPrompt(page);
+  await expect(page.getByText("Session complete")).toBeVisible();
+  const stored = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), saveKey);
+  expect(stored.pathProgress["grade1:add"]?.correct).toBe(2);
+  expect(stored.pathProgress["grade2:add"]).toBeUndefined();
+});
+
 test("reward media continues the public sample video after a full reveal", async ({ page }) => {
   await page.addInitScript((key) => {
     window.localStorage.setItem(key, JSON.stringify({

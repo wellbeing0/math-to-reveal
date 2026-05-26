@@ -14,9 +14,9 @@ Math to Reveal is a browser-first elementary math practice game. Children solve 
 
 ## Assets
 
-The public repo includes one Pexels sample reward video with attribution in public/media/pexels-kittens/.
+The public repo includes one Pexels sample reward video with attribution in the app and in public/media/pexels-kittens/.
 
-Instruction audio uses browser speech fallback in the public build. The private family build may use generated WAV files through a private overlay, but those files are not part of the public release.
+Instruction audio uses browser speech fallback in the public build. Generated voice files are not part of the public release.
 
 See docs/asset-policy.md before adding or replacing assets.
 

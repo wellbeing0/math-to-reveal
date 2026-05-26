@@ -13,6 +13,7 @@ interface InstructionAudioManifest {
 const manifest = manifestData as InstructionAudioManifest;
 const entries = new Map(manifest.entries.map((entry) => [entry.id, entry]));
 let activeAudio: HTMLAudioElement | null = null;
+let activeCancel: (() => void) | null = null;
 
 export function instructionAudioSrc(id: string | undefined): string | null {
   return id ? entries.get(id)?.src ?? null : null;
@@ -59,6 +60,8 @@ export async function playInstructionAudio(text: string, audioInstructionId?: st
 }
 
 export function cancelInstructionAudio(): void {
+  activeCancel?.();
+  activeCancel = null;
   if (activeAudio) {
     activeAudio.pause();
     activeAudio.currentTime = 0;
@@ -72,6 +75,9 @@ function playAudio(audio: HTMLAudioElement): Promise<void> {
     const cleanup = () => {
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
+      if (activeCancel === onCancel) {
+        activeCancel = null;
+      }
       if (activeAudio === audio) {
         activeAudio = null;
       }
@@ -80,10 +86,15 @@ function playAudio(audio: HTMLAudioElement): Promise<void> {
       cleanup();
       resolve();
     };
+    const onCancel = () => {
+      cleanup();
+      resolve();
+    };
     const onError = () => {
       cleanup();
       reject(new Error("Instruction audio failed."));
     };
+    activeCancel = onCancel;
     audio.addEventListener("ended", onEnded, { once: true });
     audio.addEventListener("error", onError, { once: true });
     audio.play().catch((error: unknown) => {

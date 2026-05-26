@@ -704,8 +704,8 @@ function generateDecimalEquivalentPrompt(path: PathId, settings: MathSettings, r
 function generateDecimalOperationPrompt(path: PathId, settings: MathSettings, random: RandomSource, total: number): MathPrompt {
   const subtract = random.next() > 0.5;
   const max = total === 100 ? 90 : 9;
-  const left = randomInt(random, 1, max);
-  const right = subtract ? randomInt(random, 1, left) : randomInt(random, 1, max - left + 1);
+  const left = randomInt(random, 1, subtract ? max : max - 1);
+  const right = subtract ? randomInt(random, 1, left) : randomInt(random, 1, max - left);
   const answerParts = subtract ? left - right : left + right;
   const answer = decimalLabel(answerParts, total);
   return basePrompt({

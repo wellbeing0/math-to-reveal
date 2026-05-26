@@ -15,7 +15,7 @@ import {
 } from "./mathEngine";
 import { cancelInstructionAudio, playInstructionAudio } from "./instructionAudio";
 import { REWARD_MEDIA, type RewardMedia } from "./rewardMedia";
-import { DEFAULT_SAVE, canUseStorage, loadSave, pathProgressKeyFor, saveGame, type MathSave, type PathProgress } from "./save";
+import { DEFAULT_SAVE, canUseStorage, getLastLoadSaveStatus, loadSave, pathProgressKeyFor, saveGame, type MathSave, type PathProgress, type SaveLoadStatus } from "./save";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -52,6 +52,7 @@ interface SessionState {
 
 let persistenceWarning = !canUseStorage(window.localStorage);
 let save: MathSave = loadSave(window.localStorage);
+let saveLoadStatus: SaveLoadStatus = getLastLoadSaveStatus();
 let screen: Screen = "launcher";
 let settingsOpen = false;
 let feedback = "Pick a path to start.";
@@ -120,6 +121,8 @@ function createShell(): HTMLElement {
   shell.append(topbar);
   if (persistenceWarning) {
     shell.append(el("p", "storage-warning", "Progress is available for this visit, but this browser is not allowing saved progress."));
+  } else if (saveLoadStatus === "corrupt-recovered") {
+    shell.append(el("p", "storage-warning", "Saved progress could not be read, so it was preserved as a broken backup and a fresh save was started."));
   }
   shell.append(layout);
   if (settingsOpen) {
@@ -200,6 +203,8 @@ function createPlayView(current: SessionState): HTMLElement {
   const answers = prompt.inputMode === "keypad" ? createKeypad(current) : createChoiceGrid(prompt);
 
   const feedbackPanel = el("section", "feedback-panel");
+  feedbackPanel.setAttribute("aria-live", "polite");
+  feedbackPanel.setAttribute("aria-atomic", "true");
   feedbackPanel.append(el("p", "", feedback));
 
   appendConfettiOnce(wrapper);
@@ -245,8 +250,15 @@ function createRewardPanel(): HTMLElement {
   }
   const remaining = Math.max(0, REVEAL_PIECES - reward.visiblePieces);
   panel.append(board);
+  panel.append(createRewardAttribution(reward.media));
   panel.append(el("p", "reward-note", remaining === 0 ? "Video complete. Keep playing to reveal the next one." : String(remaining) + " pieces left."));
   return panel;
+}
+
+function createRewardAttribution(media: RewardMedia): HTMLElement {
+  const attribution = el("p", "reward-attribution");
+  attribution.append(document.createTextNode("Video by " + media.artist + " - " + media.license));
+  return attribution;
 }
 
 function createRewardMedia(media: RewardMedia, fullyRevealed: boolean): HTMLElement {
@@ -403,7 +415,7 @@ function returnToLauncher(): void {
 
 function startSession(path: PathId): void {
   const savedProgress = getSavedPathProgress(path);
-  const seed = savedProgress?.seed ?? Date.now() % 100000;
+  const seed = savedProgress?.seed ?? Math.floor(Math.random() * 0x100000000);
   const promptIndex = Math.min(savedProgress?.promptIndex ?? 0, Math.max(0, save.settings.sessionLength - 1));
   const firstPrompt = generatePrompt({
     path,
@@ -564,11 +576,6 @@ function toPathProgress(current: SessionState, gradeLane: MathSettings["gradeLan
 function removeSavedPathProgress(progress: MathSave["pathProgress"], current: SessionState): MathSave["pathProgress"] {
   const next = { ...progress };
   delete next[pathProgressKey(current.path, current.currentPrompt.gradeLane)];
-  for (const [key, item] of Object.entries(next)) {
-    if (item.path === current.path) {
-      delete next[key];
-    }
-  }
   return next;
 }
 
@@ -586,6 +593,9 @@ function fallbackSavedPathProgress(path: PathId): PathProgress | null {
 function persistSave(): void {
   if (!saveGame(window.localStorage, save)) {
     persistenceWarning = true;
+  }
+  if (saveLoadStatus === "corrupt-recovered") {
+    saveLoadStatus = "ok";
   }
 }
 

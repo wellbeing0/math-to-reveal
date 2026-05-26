@@ -619,6 +619,13 @@ h3 {
   margin: 0;
 }
 
+.reward-attribution {
+  margin: 8px 0 0;
+  color: #5c6b62;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .confetti-burst {
   pointer-events: none;
   position: absolute;
