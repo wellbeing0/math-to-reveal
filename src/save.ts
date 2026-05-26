@@ -34,11 +34,11 @@ export const DEFAULT_SAVE: MathSave = {
 };
 
 export function loadSave(storage: Storage): MathSave {
-  const raw = storage.getItem(SAVE_KEY);
-  if (!raw) {
-    return DEFAULT_SAVE;
-  }
   try {
+    const raw = storage.getItem(SAVE_KEY);
+    if (!raw) {
+      return DEFAULT_SAVE;
+    }
     const parsed = JSON.parse(raw) as Partial<MathSave>;
     return {
       version: 5,
@@ -54,14 +54,48 @@ export function loadSave(storage: Storage): MathSave {
   }
 }
 
-export function saveGame(storage: Storage, save: MathSave): void {
-  storage.setItem(SAVE_KEY, JSON.stringify(save));
+export function saveGame(storage: Storage, save: MathSave): boolean {
+  try {
+    storage.setItem(SAVE_KEY, JSON.stringify(save));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function resetSave(storage: Storage, keepSettings: MathSettings): MathSave {
   const next = { ...DEFAULT_SAVE, settings: keepSettings };
   saveGame(storage, next);
   return next;
+}
+
+export function canUseStorage(storage: Storage): boolean {
+  const testKey = "math-to-reveal-storage-test";
+  try {
+    storage.setItem(testKey, "1");
+    storage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function pathProgressKeyFor(path: PathId, settings: MathSettings, gradeLane: MathSettings["gradeLane"]): string {
+  if (path === "mix") {
+    return [
+      "mix",
+      settings.gradeLanes.join("+"),
+      settings.enabledOperations.join("+"),
+      settings.enableFractions ? "fractions" : "no-fractions",
+      settings.enableDecimals ? "decimals" : "no-decimals",
+      settings.decimalPlace,
+      settings.fractionModes.join("+"),
+      settings.decimalModes.join("+")
+    ].join(":");
+  }
+
+  const decimalSuffix = path === "decimals" ? ":" + settings.decimalPlace : "";
+  return gradeLane + ":" + path + decimalSuffix;
 }
 
 function clampNonNegative(value: unknown): number {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateInstructionAudioManifest } from "./instructionAudio";
 import { buildChoices, createSeededRandom, eligiblePaths, generatePrompt, normalizeSettings, validateAnswer } from "./mathEngine";
-import { DEFAULT_SAVE, loadSave, resetSave, saveGame } from "./save";
+import { DEFAULT_SAVE, canUseStorage, loadSave, pathProgressKeyFor, resetSave, saveGame } from "./save";
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -22,6 +22,27 @@ class MemoryStorage implements Storage {
   }
   setItem(key: string, value: string): void {
     this.values.set(key, value);
+  }
+}
+
+class ThrowingStorage implements Storage {
+  get length(): number {
+    throw new Error("storage blocked");
+  }
+  clear(): void {
+    throw new Error("storage blocked");
+  }
+  getItem(): string | null {
+    throw new Error("storage blocked");
+  }
+  key(): string | null {
+    throw new Error("storage blocked");
+  }
+  removeItem(): void {
+    throw new Error("storage blocked");
+  }
+  setItem(): void {
+    throw new Error("storage blocked");
   }
 }
 
@@ -115,6 +136,27 @@ describe("Math to Reveal engine", () => {
     expect(loaded.settings.gradeLane).toBe("grade2");
     expect(loaded.settings.maxAnswer).toBe(20);
     expect(loaded.pathProgress).toEqual({});
+  });
+
+  it("keeps gameplay usable when browser storage throws", () => {
+    const storage = new ThrowingStorage();
+
+    expect(canUseStorage(storage)).toBe(false);
+    expect(loadSave(storage)).toEqual(DEFAULT_SAVE);
+    expect(saveGame(storage, { ...DEFAULT_SAVE, completedPrompts: 1 })).toBe(false);
+    expect(resetSave(storage, DEFAULT_SAVE.settings)).toEqual(DEFAULT_SAVE);
+  });
+
+  it("uses a stable progress key for mixed sessions across prompt grades", () => {
+    const settings = normalizeSettings({
+      gradeLanes: ["grade1", "grade2", "grade4"],
+      enabledOperations: ["add", "placeValue", "fraction"],
+      decimalPlace: "tenths"
+    });
+
+    expect(pathProgressKeyFor("mix", settings, "grade1")).toBe(pathProgressKeyFor("mix", settings, "grade4"));
+    expect(pathProgressKeyFor("mix", settings, "grade2")).toContain("grade1+grade2+grade4");
+    expect(pathProgressKeyFor("add", settings, "grade1")).not.toBe(pathProgressKeyFor("add", settings, "grade2"));
   });
 
   it("adds grade 2 paths and keypad prompts without regrouping by default", () => {

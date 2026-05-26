@@ -14,7 +14,8 @@
     "url": "https://github.com/wellbeing0/math-to-reveal.git"
   },
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite --host 127.0.0.1",
+    "dev:host": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
     "test": "vitest run src",
     "test:e2e": "playwright test",

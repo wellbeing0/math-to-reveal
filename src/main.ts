@@ -15,7 +15,7 @@ import {
 } from "./mathEngine";
 import { cancelInstructionAudio, playInstructionAudio } from "./instructionAudio";
 import { REWARD_MEDIA, type RewardMedia } from "./rewardMedia";
-import { loadSave, resetSave, saveGame, type MathSave, type PathProgress } from "./save";
+import { DEFAULT_SAVE, canUseStorage, loadSave, pathProgressKeyFor, saveGame, type MathSave, type PathProgress } from "./save";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -50,6 +50,7 @@ interface SessionState {
   answeredPromptIds: string[];
 }
 
+let persistenceWarning = !canUseStorage(window.localStorage);
 let save: MathSave = loadSave(window.localStorage);
 let screen: Screen = "launcher";
 let settingsOpen = false;
@@ -109,7 +110,11 @@ function createShell(): HTMLElement {
   }
 
   layout.append(play, createRewardPanel());
-  shell.append(topbar, layout);
+  shell.append(topbar);
+  if (persistenceWarning) {
+    shell.append(el("p", "storage-warning", "Progress is available for this visit, but this browser is not allowing saved progress."));
+  }
+  shell.append(layout);
   if (settingsOpen) {
     shell.append(createSettingsSheet());
   }
@@ -352,7 +357,8 @@ function createSettingsSheet(): HTMLElement {
   const reset = buttonEl("Reset math progress", "danger-action");
   reset.addEventListener("click", () => {
     if (window.confirm("Reset Math to Reveal progress?")) {
-      save = resetSave(window.localStorage, save.settings);
+      save = { ...DEFAULT_SAVE, settings: save.settings };
+      persistSave();
       screen = "launcher";
       session = null;
       feedback = "Progress reset.";
@@ -456,7 +462,7 @@ function answerPrompt(answer: AnswerValue): void {
       completedSessions: save.completedSessions + 1,
       pathProgress: removeSavedPathProgress(save.pathProgress, session)
     };
-    saveGame(window.localStorage, save);
+    persistSave();
     screen = "summary";
     feedback = "Session complete.";
     render();
@@ -478,7 +484,7 @@ function answerPrompt(answer: AnswerValue): void {
       [pathProgressKey(session.path, session.currentPrompt.gradeLane)]: toPathProgress(session, session.currentPrompt.gradeLane)
     }
   };
-  saveGame(window.localStorage, save);
+  persistSave();
   render();
 }
 
@@ -494,7 +500,7 @@ function updateSettings(next: Partial<MathSettings>): void {
     ...save,
     settings: normalizeSettings({ ...save.settings, ...next })
   };
-  saveGame(window.localStorage, save);
+  persistSave();
   session = null;
   screen = "launcher";
   feedback = "Settings updated.";
@@ -516,7 +522,7 @@ function updateGradeLane(gradeLane: GradeLane, enabled: boolean): void {
 function getSavedPathProgress(path: PathId): PathProgress | null {
   const progress = save.pathProgress[pathProgressKey(path, gradeLaneForPath(path))];
   if (!progress || progress.correct >= save.settings.sessionLength) {
-    return null;
+    return fallbackSavedPathProgress(path);
   }
   return progress;
 }
@@ -532,7 +538,7 @@ function persistCurrentPathProgress(): void {
       [pathProgressKey(session.path, session.currentPrompt.gradeLane)]: toPathProgress(session, session.currentPrompt.gradeLane)
     }
   };
-  saveGame(window.localStorage, save);
+  persistSave();
 }
 
 function toPathProgress(current: SessionState, gradeLane: MathSettings["gradeLane"]): PathProgress {
@@ -551,12 +557,29 @@ function toPathProgress(current: SessionState, gradeLane: MathSettings["gradeLan
 function removeSavedPathProgress(progress: MathSave["pathProgress"], current: SessionState): MathSave["pathProgress"] {
   const next = { ...progress };
   delete next[pathProgressKey(current.path, current.currentPrompt.gradeLane)];
+  for (const [key, item] of Object.entries(next)) {
+    if (item.path === current.path) {
+      delete next[key];
+    }
+  }
   return next;
 }
 
 function pathProgressKey(path: PathId, gradeLane: MathSettings["gradeLane"]): string {
-  const decimalSuffix = path === "decimals" ? ":" + save.settings.decimalPlace : "";
-  return gradeLane + ":" + path + decimalSuffix;
+  return pathProgressKeyFor(path, save.settings, gradeLane);
+}
+
+function fallbackSavedPathProgress(path: PathId): PathProgress | null {
+  const candidates = Object.values(save.pathProgress)
+    .filter((progress) => progress.path === path && progress.correct < save.settings.sessionLength)
+    .sort((a, b) => b.correct - a.correct || b.promptIndex - a.promptIndex);
+  return candidates[0] ?? null;
+}
+
+function persistSave(): void {
+  if (!saveGame(window.localStorage, save)) {
+    persistenceWarning = true;
+  }
 }
 
 function updateChildOperation(operation: Operation, enabled: boolean): void {
