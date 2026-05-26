@@ -43,6 +43,11 @@ No server-side runtime is required.
 
 Public releases are exported from a private canonical development repo. See OPEN_SOURCE_RELEASE_CHECKLIST.md for the gates used before tagging a release.
 
+## Contributors
+
+- wellbeing0 - project owner and maintainer
+- OpenClaw Codex - code, docs, testing, and release support
+
 ## License
 
 Source code is licensed under the MIT License. Media assets have their own documented license/provenance.
