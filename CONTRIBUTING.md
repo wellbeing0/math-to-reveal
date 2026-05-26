@@ -6,13 +6,15 @@ Math to Reveal is developed first in a private canonical repo, then exported to 
 
 Run:
 
-- npm --prefix games/math-to-reveal install
-- npm --prefix games/math-to-reveal test
-- npm --prefix games/math-to-reveal run build
+- npm ci
+- npm test
+- npm run build
 
 Run Playwright checks before larger UI changes:
 
-- npm --prefix games/math-to-reveal run test:e2e
+- npm run test:e2e
+
+Use Node 20.19 or newer. The project is tested with Node 24. Keep dependency changes intentional: commit package-lock.json updates, keep runtime dependencies out unless they materially improve the app, and prefer devDependencies for build/test tooling.
 
 ## Contribution Rules
 

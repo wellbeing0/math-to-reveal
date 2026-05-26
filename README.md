@@ -22,7 +22,9 @@ See docs/asset-policy.md before adding or replacing assets.
 
 ## Development
 
-    npm install
+Use Node 20.19 or newer. The project is tested with Node 24.
+
+    npm ci
     npm test
     npm run build
     npm run test:e2e
@@ -38,6 +40,10 @@ Build output is written to dist/ and can be hosted by any static file server:
     npm run build
 
 No server-side runtime is required.
+
+## Dependencies
+
+Runtime dependencies are intentionally avoided. Build, test, and validation tools live in devDependencies and are pinned by package-lock.json. Use npm ci for reproducible installs, and use npm install only when intentionally updating dependencies.
 
 ## Release Process
 

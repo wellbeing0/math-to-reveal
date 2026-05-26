@@ -4,6 +4,11 @@
   "description": "Browser-first elementary math practice with video reveal rewards.",
   "license": "MIT",
   "type": "module",
+  "packageManager": "npm@11.12.1",
+  "engines": {
+    "node": ">=20.19 <25",
+    "npm": ">=10"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/wellbeing0/math-to-reveal.git"
