@@ -90,6 +90,33 @@ describe("Math to Reveal engine", () => {
     expect(loadSave(storage).settings.enabledOperations).toEqual(["count"]);
   });
 
+  it("handles corrupted and partial localStorage saves", () => {
+    const corrupted = new MemoryStorage();
+    corrupted.setItem("math-to-reveal-save-v1", "not-json");
+    expect(loadSave(corrupted)).toEqual(DEFAULT_SAVE);
+
+    const partial = new MemoryStorage();
+    partial.setItem("math-to-reveal-save-v1", JSON.stringify({
+      completedPrompts: "4",
+      revealedPieces: 2,
+      settings: {
+        gradeLane: "grade2",
+        enabledOperations: ["add"],
+        maxAnswer: 5
+      },
+      pathProgress: {
+        broken: { path: "unknown", gradeLane: "grade9" }
+      }
+    }));
+
+    const loaded = loadSave(partial);
+    expect(loaded.completedPrompts).toBe(4);
+    expect(loaded.revealedPieces).toBe(2);
+    expect(loaded.settings.gradeLane).toBe("grade2");
+    expect(loaded.settings.maxAnswer).toBe(20);
+    expect(loaded.pathProgress).toEqual({});
+  });
+
   it("adds grade 2 paths and keypad prompts without regrouping by default", () => {
     const settings = normalizeSettings({ gradeLane: "grade2" });
     expect(eligiblePaths(settings)).toEqual(["add", "subtract", "placeValue", "skipCount", "groups", "mix"]);
