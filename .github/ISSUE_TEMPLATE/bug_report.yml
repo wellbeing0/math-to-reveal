@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a problem with Math to Reveal.
+title: "Bug: "
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include browser/device details when relevant.
+      placeholder: |
+        1. Open ...
+        2. Choose ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      placeholder: iPad Safari, Chrome on Android, desktop Chrome, etc.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context

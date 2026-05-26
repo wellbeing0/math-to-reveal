@@ -9,28 +9,28 @@ Use this checklist before creating or updating the public release repo.
 - [x] Canonical source through v0.1.0: private repo.
 - [x] Public reward media: one Pexels video sample.
 - [x] Public instruction audio: no Gemini WAVs; browser speech fallback.
-- [ ] Public repo name and location confirmed.
+- [x] Public repo name and location confirmed: `wellbeing0/math-to-reveal`.
 
 ## Local Gates
 
-- [ ] Unit tests pass.
-- [ ] Production build passes.
-- [ ] Playwright e2e passes.
-- [ ] OpenSpec validation passes.
-- [ ] Production dependency audit passes.
-- [ ] Git whitespace check passes.
-- [ ] Public-clean scan passes against the public export.
-- [ ] Fresh public clone install/build passes.
+- [x] Unit tests pass.
+- [x] Production build passes.
+- [x] Playwright e2e passes.
+- [x] OpenSpec validation passes.
+- [x] Production dependency audit passes.
+- [x] Git whitespace check passes.
+- [x] Public-clean scan passes against the public export.
+- [ ] Fresh public clone install/build passes from Steve's machine.
 
 ## Public Export
 
-- [ ] Export only public-safe source, tests, docs, OpenSpec baselines, and the approved sample asset.
-- [ ] Exclude private overlay files, generated Gemini WAVs, protected deployment scripts, VPS paths, private domains, handoff notes, dist/, reports, and local state.
-- [ ] Verify docs/asset-policy.md matches the exported assets.
+- [x] Export only public-safe source, tests, docs, OpenSpec baselines, and the approved sample asset.
+- [x] Exclude private overlay files, generated Gemini WAVs, protected deployment scripts, VPS paths, private domains, handoff notes, dist/, reports, and local state.
+- [x] Verify docs/asset-policy.md matches the exported assets.
 - [ ] Tag v0.1.0 only after Steve approves this checklist.
 
 ## Private Family Verification
 
-- [ ] Private overlay still provides the current family reward videos and posters.
-- [ ] Private overlay still provides Gemini Aoede instruction WAVs.
-- [ ] Protected family deployment smoke check passes after any public-source change is applied back.
+- [x] Private overlay still provides the current family reward videos and posters in the private canonical repo.
+- [x] Private overlay still provides Gemini Aoede instruction WAVs in the private canonical repo.
+- [ ] Protected family deployment smoke check passes after the final public-source release tag.

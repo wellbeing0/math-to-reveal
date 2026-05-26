@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an improvement or new learning activity.
+title: "Feature: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Learning or usability goal
+      description: What should this help a child or adult do?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed idea
+      description: Describe the feature or change.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or references
+      description: Include grade level, device, accessibility, or asset notes.
