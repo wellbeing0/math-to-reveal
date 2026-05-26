@@ -6,8 +6,6 @@ target="${1:-.}"
 patterns=(
   "steveleclair.info"
   "/var/www"
-  "basic_auth"
-  "Caddy"
   "README-private"
   "gemini-aoede"
   "GEMINI_API_KEY"
