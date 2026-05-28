@@ -213,7 +213,7 @@ test("repeated misses complete the prompt without reward mastery credit", async 
   expect(stored.bestStreak).toBe(0);
 });
 
-test("teaching aid opens one step at a time and marks the prompt helped", async ({ page }) => {
+test("teaching aid opens one step at a time without reducing prompt credit", async ({ page }) => {
   await setShortSession(page, { attemptsToReward: 3 });
   await page.goto("/");
   await page.getByRole("button", { name: /Add/ }).tap();
@@ -234,10 +234,10 @@ test("teaching aid opens one step at a time and marks the prompt helped", async 
 
   await answerCurrentPrompt(page);
   await expect(page.getByText("Solved 1 of 3")).toBeVisible();
-  await expect(page.locator(".reveal-board")).toHaveAttribute("aria-label", "0 of 10 video pieces revealed");
+  await expect(page.locator(".reveal-board")).toHaveAttribute("aria-label", "1 of 10 video pieces revealed");
   const stored = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), saveKey);
-  expect(stored.completedPrompts).toBe(0);
-  expect(stored.revealedPieces).toBe(0);
+  expect(stored.completedPrompts).toBe(1);
+  expect(stored.revealedPieces).toBe(1);
   expect(stored.settings.seenTeachingAidIds).toContain("addition-within-20");
 });
 

@@ -640,7 +640,7 @@ describe("Math to Reveal engine", () => {
     }
   });
 
-  it("marks teaching-aid completions helped without reward or mastery credit", () => {
+  it("keeps teaching-aid completions eligible for reward and mastery credit", () => {
     const settings = normalizeSettings({ gradeLane: "grade1", enabledOperations: ["add"], attemptsToReward: 3 });
     const session = markHelpUsed(createSessionState({ path: "add", settings, savedProgress: null, seed: 55 }));
     const result = evaluateAnswer({
@@ -660,10 +660,11 @@ describe("Math to Reveal engine", () => {
       throw new Error("expected correct");
     }
     expect(result.helpUsed).toBe(true);
-    expect(result.completionQuality).toBe("helped");
-    expect(result.completedPrompts).toBe(2);
-    expect(result.revealedPieces).toBe(2);
+    expect(result.completionQuality).toBe("clean");
+    expect(result.completedPrompts).toBe(3);
+    expect(result.revealedPieces).toBe(3);
     expect(result.bestStreak).toBe(2);
+    expect(result.lastRewardPiece).toBe(2);
     expect(result.session.helpUsed).toBe(false);
   });
 

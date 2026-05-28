@@ -133,7 +133,7 @@ export function evaluateAnswer(args: {
     };
   }
 
-  const completionQuality: CompletionQuality = session.promptAttempts > settings.attemptsToReward || session.helpUsed ? "helped" : "clean";
+  const completionQuality: CompletionQuality = session.promptAttempts > settings.attemptsToReward ? "helped" : "clean";
   const cleanCompletion = completionQuality === "clean";
   const completedPrompts = cleanCompletion ? args.completedPrompts + 1 : args.completedPrompts;
   const revealedPieces = cleanCompletion ? args.revealedPieces + 1 : args.revealedPieces;
