@@ -44,8 +44,18 @@ export async function playInstructionAudio(text: string, audioInstructionId?: st
   cancelInstructionAudio();
   const src = instructionAudioSrc(audioInstructionId);
   if (src) {
+    return playLocalAudio(text, src);
+  }
+
+  speakWithBrowserVoice(text);
+  return "fallback";
+}
+
+export async function playLocalAudio(text: string, src: string | null | undefined): Promise<"audio" | "fallback" | "silent"> {
+  cancelInstructionAudio();
+  if (src) {
     try {
-      const audio = new Audio(src);
+      const audio = new Audio(publicAssetSrc(src));
       activeAudio = audio;
       await playAudio(audio);
       return "audio";
@@ -55,18 +65,30 @@ export async function playInstructionAudio(text: string, audioInstructionId?: st
     }
   }
 
-  speakWithBrowserVoice(text);
-  return "fallback";
+  if (text.trim()) {
+    speakWithBrowserVoice(text);
+    return "fallback";
+  }
+  return "silent";
+}
+
+function publicAssetSrc(src: string): string {
+  if (!src.startsWith("/")) {
+    return src;
+  }
+  return new URL(src.slice(1), window.location.href).toString();
 }
 
 export function cancelInstructionAudio(): void {
-  activeCancel?.();
+  const audio = activeAudio;
+  const cancel = activeCancel;
+  activeAudio = null;
   activeCancel = null;
-  if (activeAudio) {
-    activeAudio.pause();
-    activeAudio.currentTime = 0;
-    activeAudio = null;
+  if (audio) {
+    audio.pause();
+    audio.currentTime = 0;
   }
+  cancel?.();
   window.speechSynthesis?.cancel();
 }
 

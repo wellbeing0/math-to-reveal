@@ -103,8 +103,8 @@ async function answerCurrentPrompt(page: Page, correct = true): Promise<number> 
   return Number(answer);
 }
 
-async function setShortSession(page: Page): Promise<void> {
-  await page.addInitScript((key) => {
+async function setShortSession(page: Page, extra: Record<string, unknown> = {}): Promise<void> {
+  await page.addInitScript(({ key, extraSettings }) => {
     window.localStorage.setItem(key, JSON.stringify({
       version: 2,
       completedPrompts: 0,
@@ -120,10 +120,11 @@ async function setShortSession(page: Page): Promise<void> {
         reducedMotion: false,
         allowRegrouping: false,
         enableFractions: false,
-        enableDecimals: false
+        enableDecimals: false,
+        ...extraSettings
       }
     }));
-  }, saveKey);
+  }, { key: saveKey, extraSettings: extra });
 }
 
 async function setGradeSession(page: Page, gradeLane: "grade2" | "grade3" | "grade4", enabledOperations: string[], extra: Record<string, unknown> = {}): Promise<void> {
@@ -193,6 +194,101 @@ test("wrong answers nudge without advancing progress, then retry succeeds", asyn
   await expect(page.locator(".reveal-board")).toHaveAttribute("aria-label", "1 of 10 video pieces revealed");
 });
 
+test("repeated misses complete the prompt without reward mastery credit", async ({ page }) => {
+  await setShortSession(page, { attemptsToReward: 1 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Add/ }).tap();
+
+  await answerCurrentPrompt(page, false);
+  await expect(page.locator(".feedback-panel p")).toContainText(/Put|Try|Look|Almost|Check|Count|Add/);
+  await answerCurrentPrompt(page, false);
+  await expect(page.locator(".feedback-panel p")).toContainText("Pause and check the numbers.");
+  await answerCurrentPrompt(page);
+
+  await expect(page.getByText("Solved 1 of 3")).toBeVisible();
+  await expect(page.locator(".reveal-board")).toHaveAttribute("aria-label", "0 of 10 video pieces revealed");
+  const stored = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), saveKey);
+  expect(stored.completedPrompts).toBe(0);
+  expect(stored.revealedPieces).toBe(0);
+  expect(stored.bestStreak).toBe(0);
+});
+
+test("teaching aid opens one step at a time and marks the prompt helped", async ({ page }) => {
+  await setShortSession(page, { attemptsToReward: 3 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Add/ }).tap();
+
+  await expect(page.getByText("New idea: Add by making a picture")).toBeVisible();
+  const activeQuestion = ((await page.locator(".question").textContent()) ?? "").trim();
+  const activeAddends = activeQuestion.match(/(\d+)\s*\+\s*(\d+)/);
+  await page.getByRole("button", { name: "Show a way" }).tap();
+  await expect(page.getByRole("region", { name: "Add by making a picture" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Understand" })).toBeVisible();
+  await expect(page.locator(".teaching-aid-media img")).toHaveAttribute("src", /^data:image\/svg\+xml,/);
+  await expect(page.locator(".teaching-aid-media img")).toHaveAttribute("alt", new RegExp("Active addition problem " + activeAddends?.[1] + " plus " + activeAddends?.[2]));
+  await page.getByRole("button", { name: "Next step" }).tap();
+  await expect(page.getByRole("heading", { name: "Plan" })).toBeVisible();
+  await expect(page.locator(".teaching-aid-media img")).toHaveAttribute("alt", /Active addition problem/);
+  await expect(page.getByText("Uses this problem's addends.")).toBeVisible();
+  await page.getByRole("button", { name: "Back to problem" }).tap();
+
+  await answerCurrentPrompt(page);
+  await expect(page.getByText("Solved 1 of 3")).toBeVisible();
+  await expect(page.locator(".reveal-board")).toHaveAttribute("aria-label", "0 of 10 video pieces revealed");
+  const stored = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), saveKey);
+  expect(stored.completedPrompts).toBe(0);
+  expect(stored.revealedPieces).toBe(0);
+  expect(stored.settings.seenTeachingAidIds).toContain("addition-within-20");
+});
+
+test("repeated misses offer the matching teaching aid", async ({ page }) => {
+  await setShortSession(page, { attemptsToReward: 2 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Subtract/ }).tap();
+  await page.getByRole("button", { name: "Skip" }).tap();
+
+  await answerCurrentPrompt(page, false);
+  await answerCurrentPrompt(page, false);
+
+  await expect(page.getByText("Want to try a thinking step?")).toBeVisible();
+  await page.getByRole("button", { name: "Try a thinking step" }).tap();
+  await expect(page.getByRole("region", { name: "Subtract by taking away" })).toBeVisible();
+});
+
+test("adult settings can hide and restore teaching aids", async ({ page }) => {
+  await setShortSession(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open adult settings" }).tap();
+  const addAidRow = page.locator(".teaching-aid-row").filter({ hasText: "Add by making a picture" });
+  await addAidRow.getByRole("button", { name: "View" }).tap();
+  await expect(page.getByRole("region", { name: "Add by making a picture" })).toBeVisible();
+  await expect(page.getByText("Teaching aid preview")).toBeVisible();
+  await expect(page.locator(".teaching-aid-media img")).toHaveAttribute("alt", /^Example:/);
+  await expect(page.getByText("Example picture; active problems use the current numbers.")).toBeVisible();
+  await page.getByRole("button", { name: "Next step" }).tap();
+  await expect(page.getByRole("heading", { name: "Plan" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to settings" }).tap();
+  const previewed = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), saveKey);
+  expect(previewed.settings.seenTeachingAidIds ?? []).not.toContain("addition-within-20");
+  page.once("dialog", async (dialog) => dialog.accept());
+  await addAidRow.getByRole("button", { name: "Hide" }).tap();
+  await expect(addAidRow).toContainText("hidden");
+  await page.getByRole("button", { name: "Close" }).tap();
+
+  await page.getByRole("button", { name: /Add/ }).tap();
+  await expect(page.getByRole("button", { name: "Show a way" })).toHaveCount(0);
+  await expect(page.getByText("New idea: Add by making a picture")).toHaveCount(0);
+  await page.getByRole("button", { name: "Choose path" }).tap();
+
+  await page.getByRole("button", { name: "Open adult settings" }).tap();
+  await addAidRow.getByRole("button", { name: "Restore" }).tap();
+  await page.getByRole("button", { name: "Close" }).tap();
+
+  await page.getByRole("button", { name: /Add/ }).tap();
+  await expect(page.getByRole("button", { name: "Show a way" })).toBeVisible();
+});
+
 test("child can leave a path before finishing and choose another path", async ({ page }) => {
   await setShortSession(page);
   await page.goto("/");
@@ -204,7 +300,7 @@ test("child can leave a path before finishing and choose another path", async ({
 
   await page.getByRole("button", { name: /Subtract/ }).tap();
   await expect(page.getByText("Solved 0 of 3")).toBeVisible();
-  await expect(page.getByText("Subtract")).toBeVisible();
+  await expect(page.locator(".path-label")).toHaveText("Subtract");
 });
 
 test("unfinished path progress is restored until reset", async ({ page }) => {
@@ -286,7 +382,7 @@ test("completing a path preserves saved progress for the same path in another gr
   expect(stored.pathProgress["grade2:add"]).toBeUndefined();
 });
 
-test("reward media continues the public sample video after a full reveal", async ({ page }) => {
+test("reward media wraps through the bundled public video after a full reveal", async ({ page }) => {
   await page.addInitScript((key) => {
     window.localStorage.setItem(key, JSON.stringify({
       version: 2,
@@ -433,7 +529,7 @@ test("fourth grade has visual fraction and decimal paths with child tenths and h
   await page.getByRole("button", { name: /Decimals/ }).tap();
   await expect(page.locator(".part-model").first()).toBeVisible();
   await expect(page.locator(".hundredths-model").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Repeat instruction" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Repeat instruction" })).toHaveCount(0);
   await answerCurrentPrompt(page);
   await expect(page.getByText("Solved 1 of 4")).toBeVisible();
 
@@ -442,25 +538,6 @@ test("fourth grade has visual fraction and decimal paths with child tenths and h
   await page.getByRole("button", { name: /Decimals/ }).tap();
   await expect(page.locator(".hundredths-model")).toHaveCount(0);
   await expect(page.locator(".part-model").first()).toBeVisible();
-});
-
-test("instruction audio button falls back to browser speech without static assets", async ({ page }) => {
-  await setGradeSession(page, "grade4", ["decimal"], {
-    sessionLength: 3,
-    decimalModes: ["equivalent"],
-    decimalPlace: "tenths"
-  });
-  await page.goto("/");
-
-  await page.getByRole("button", { name: /Decimals/ }).tap();
-  const requests: string[] = [];
-  await page.route("**/audio/math/instructions/**/*.wav", async (route) => {
-    requests.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: "audio/wav", body: "" });
-  });
-  await page.getByRole("button", { name: "Repeat instruction" }).tap();
-  await page.waitForTimeout(300);
-  expect(requests).toHaveLength(0);
 });
 
 test("fourth grade add and subtract modes stay visual and answerable", async ({ page }) => {

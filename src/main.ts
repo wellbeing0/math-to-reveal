@@ -1,21 +1,24 @@
 import "./styles.css";
 import {
-  createSeededRandom,
   eligiblePaths,
-  generatePrompt,
   normalizeSettings,
-  validateAnswer,
   type AnswerValue,
   type MathPrompt,
   type MathSettings,
   type GradeLane,
   type Operation,
-  type PartModel,
   type PathId
 } from "./mathEngine";
-import { cancelInstructionAudio, playInstructionAudio } from "./instructionAudio";
+import { allowedOperationsForSettings, operationsForGradeLane, uniqueOperations } from "./mathSettings";
+import { cancelInstructionAudio } from "./instructionAudio";
 import { REWARD_MEDIA, type RewardMedia } from "./rewardMedia";
-import { DEFAULT_SAVE, canUseStorage, getLastLoadSaveStatus, loadSave, pathProgressKeyFor, saveGame, type MathSave, type PathProgress, type SaveLoadStatus } from "./save";
+import { getActiveReward as getRewardForProgress, hideRewardMediaId, isGiphyMedia, isHiddenRewardMediaId as isHiddenRewardMediaIdForSettings, restoreRewardMediaId, REVEAL_PIECES, visibleRewardMedia } from "./rewardProgress";
+import { loadGiphyRewardMedia, normalizeRewardThemeId, REWARD_THEMES, rewardThemeById, type RewardThemeId } from "./rewardThemes";
+import { DEFAULT_SAVE, canUseStorage, getLastLoadSaveStatus, loadSave, saveGame, type MathSave, type PathProgress, type SaveLoadStatus } from "./save";
+import { bestSavedPathProgress, createSessionState, evaluateAnswer, markHelpUsed, pathProgressKey as sessionPathProgressKey, removeSavedPathProgress, toPathProgress, type SessionState } from "./sessionFlow";
+import { teachingAidForContext, teachingAidForPrompt, teachingAidStepMedia, TEACHING_AIDS, type TeachingAid, type TeachingAidMedia } from "./teachingAids";
+import { playTeachingAidStepAudio } from "./teachingAidAudio";
+import { createArrayGrid, createCompareVisual, createEquivalentVisual, createFractionVisual, createGemGrid, createGroupGrid, createOperationVisual, createPartVisual } from "./views/mathVisuals";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -25,7 +28,6 @@ if (!app) {
 
 const appRoot = app;
 
-const REVEAL_PIECES = 10;
 const CORRECT_FEEDBACK = ["Nice math.", "You found it.", "That works.", "Good thinking.", "Path cleared."];
 const NUDGE_FEEDBACK = ["Try that one again.", "Look closely and try again.", "Almost. Count it one more time.", "Check the numbers again."];
 const GRADE_CHOICES: Array<[GradeLane, string]> = [
@@ -38,18 +40,6 @@ const GRADE_CHOICES: Array<[GradeLane, string]> = [
 
 type Screen = "launcher" | "play" | "summary";
 
-interface SessionState {
-  path: PathId;
-  promptIndex: number;
-  seed: number;
-  currentPrompt: MathPrompt;
-  correct: number;
-  mistakes: number;
-  streak: number;
-  keypadValue: string;
-  answeredPromptIds: string[];
-}
-
 let persistenceWarning = !canUseStorage(window.localStorage);
 let save: MathSave = loadSave(window.localStorage);
 let saveLoadStatus: SaveLoadStatus = getLastLoadSaveStatus();
@@ -60,6 +50,12 @@ let selectedWrong: AnswerValue | null = null;
 let session: SessionState | null = null;
 let lastRewardPiece = -1;
 let celebrating = false;
+let themedRewardMedia: RewardMedia[] = [];
+let rewardThemeStatus = "";
+let viewedRewardMediaId: string | null = null;
+let rewardMediaMessage = "";
+let activeTeachingAid: { aid: TeachingAid; stepIndex: number; preview: boolean } | null = null;
+let teachingAidMessage = "";
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
@@ -68,12 +64,20 @@ document.addEventListener("visibilitychange", () => {
 });
 
 render();
+void loadSelectedRewardTheme();
 
 function render(): void {
+  const settingsSheetScrollTop = document.querySelector<HTMLElement>(".settings-sheet")?.scrollTop ?? 0;
   document.body.classList.toggle("settings-open", settingsOpen);
   document.body.classList.toggle("reduced-motion", save.settings.reducedMotion);
   appRoot.innerHTML = "";
   appRoot.append(createShell());
+  if (settingsOpen) {
+    const settingsSheet = document.querySelector<HTMLElement>(".settings-sheet");
+    if (settingsSheet) {
+      settingsSheet.scrollTop = settingsSheetScrollTop;
+    }
+  }
 }
 
 function createShell(): HTMLElement {
@@ -128,6 +132,9 @@ function createShell(): HTMLElement {
   if (settingsOpen) {
     shell.append(createSettingsSheet());
   }
+  if (activeTeachingAid) {
+    shell.append(createTeachingAidPanel(activeTeachingAid.aid, activeTeachingAid.stepIndex, activeTeachingAid.preview));
+  }
   return shell;
 }
 
@@ -152,6 +159,7 @@ function createLauncher(): HTMLElement {
 
 function createPlayView(current: SessionState): HTMLElement {
   const prompt = current.currentPrompt;
+  const teachingAid = teachingAidForPrompt(prompt, save.settings);
   const wrapper = el("article", "practice-card");
   const progress = el("div", "session-progress");
   progress.append(el("span", "", "Solved " + String(current.correct) + " of " + String(save.settings.sessionLength)));
@@ -167,14 +175,23 @@ function createPlayView(current: SessionState): HTMLElement {
   promptPanel.append(el("p", "path-label", pathLabel(current.path)));
   const questionRow = el("div", "question-row");
   questionRow.append(el("div", "question", prompt.question));
-  const repeatInstruction = buttonEl("▶", "instruction-audio-button");
-  repeatInstruction.setAttribute("aria-label", "Repeat instruction");
-  repeatInstruction.title = "Repeat instruction";
-  repeatInstruction.addEventListener("click", () => {
-    void playInstructionAudio(prompt.question, prompt.audioInstructionId);
-  });
-  questionRow.append(repeatInstruction);
+  if (teachingAid) {
+    questionRow.classList.add("has-help");
+    const helpButton = buttonEl(teachingAid.buttonLabel, "secondary-action help-action");
+    helpButton.addEventListener("click", () => openTeachingAid(teachingAid, 0));
+    questionRow.append(helpButton);
+  }
   promptPanel.append(questionRow);
+  if (teachingAid && !save.settings.seenTeachingAidIds.includes(teachingAid.id)) {
+    const intro = el("section", "teaching-aid-offer");
+    intro.append(el("p", "", "New idea: " + teachingAid.title));
+    const open = buttonEl("Think with me", "secondary-action tiny-action");
+    open.addEventListener("click", () => openTeachingAid(teachingAid, 0));
+    const dismiss = buttonEl("Skip", "secondary-action tiny-action");
+    dismiss.addEventListener("click", () => acknowledgeTeachingAid(teachingAid.id));
+    intro.append(open, dismiss);
+    promptPanel.append(intro);
+  }
   if (prompt.visualCount) {
     promptPanel.append(createGemGrid(prompt.visualCount));
   }
@@ -206,6 +223,11 @@ function createPlayView(current: SessionState): HTMLElement {
   feedbackPanel.setAttribute("aria-live", "polite");
   feedbackPanel.setAttribute("aria-atomic", "true");
   feedbackPanel.append(el("p", "", feedback));
+  if (teachingAid && current.promptAttempts >= 2) {
+    const offer = buttonEl("Try a thinking step", "secondary-action tiny-action");
+    offer.addEventListener("click", () => openTeachingAid(teachingAid, 0));
+    feedbackPanel.append(offer);
+  }
 
   appendConfettiOnce(wrapper);
   wrapper.append(progress, promptPanel, answers, feedbackPanel);
@@ -252,12 +274,15 @@ function createRewardPanel(): HTMLElement {
   panel.append(board);
   panel.append(createRewardAttribution(reward.media));
   panel.append(el("p", "reward-note", remaining === 0 ? "Video complete. Keep playing to reveal the next one." : String(remaining) + " pieces left."));
+  if (rewardThemeStatus) {
+    panel.append(el("p", "reward-attribution", rewardThemeStatus));
+  }
   return panel;
 }
 
 function createRewardAttribution(media: RewardMedia): HTMLElement {
   const attribution = el("p", "reward-attribution");
-  attribution.append(document.createTextNode("Video by " + media.artist + " - " + media.license));
+  attribution.append(document.createTextNode((isGiphyMedia(media) ? "GIF by " : "Video by ") + media.artist + " - " + media.license));
   return attribution;
 }
 
@@ -286,13 +311,7 @@ function createRewardMedia(media: RewardMedia, fullyRevealed: boolean): HTMLElem
 }
 
 function getActiveReward(totalRevealedPieces: number): { media: RewardMedia; visiblePieces: number } {
-  const safePieces = Math.max(0, totalRevealedPieces);
-  const mediaIndex = safePieces === 0 ? 0 : Math.floor((safePieces - 1) / REVEAL_PIECES) % REWARD_MEDIA.length;
-  const visiblePieces = safePieces === 0 ? 0 : ((safePieces - 1) % REVEAL_PIECES) + 1;
-  return {
-    media: REWARD_MEDIA[mediaIndex],
-    visiblePieces
-  };
+  return getRewardForProgress(totalRevealedPieces, activeRewardMedia());
 }
 
 function createSettingsSheet(): HTMLElement {
@@ -342,6 +361,7 @@ function createSettingsSheet(): HTMLElement {
   maxAnswer.input.addEventListener("change", () => updateSettings({ maxAnswer: Number(maxAnswer.input.value) }));
   const maxAddend = numberControl("Highest addend", save.settings.maxAddend, 3, save.settings.gradeLane === "grade1" ? 12 : 99);
   maxAddend.input.addEventListener("change", () => updateSettings({ maxAddend: Number(maxAddend.input.value) }));
+  const attemptsToReward = stepperControl("Attempts to reward", save.settings.attemptsToReward, 0, 3, (value) => updateSettings({ attemptsToReward: value }));
 
   const regrouping = checkControl("Allow regrouping", save.settings.allowRegrouping, (checked) => updateSettings({ allowRegrouping: checked }));
   const fractions = checkControl("Fractions", save.settings.enableFractions, (checked) => updateSettings({
@@ -371,6 +391,13 @@ function createSettingsSheet(): HTMLElement {
     ["equivalent", "Equivalent"],
     ["addSubtract", "Add/subtract"]
   ], save.settings.decimalModes, (modes) => updateSettings({ decimalModes: modes as MathSettings["decimalModes"] }));
+  const rewardTheme = selectControl("Reward theme", save.settings.rewardTheme, REWARD_THEMES.map((theme) => [theme.id, theme.label]));
+  rewardTheme.input.addEventListener("change", () => {
+    const themeId = normalizeRewardThemeId(rewardTheme.input.value);
+    rewardThemeStatus = "";
+    updateSettings({ rewardTheme: themeId });
+    void loadSelectedRewardTheme();
+  });
   const motion = checkControl("Reduce motion", save.settings.reducedMotion, (checked) => updateSettings({ reducedMotion: checked }));
 
   const reset = buttonEl("Reset math progress", "danger-action");
@@ -386,7 +413,7 @@ function createSettingsSheet(): HTMLElement {
     }
   });
 
-  sheet.append(header, gradeControls, ops, length.label, maxAnswer.label, maxAddend.label);
+  sheet.append(header, gradeControls, ops, length.label, maxAnswer.label, maxAddend.label, attemptsToReward);
   if (hasGrade("grade2") || hasGrade("grade3")) {
     sheet.append(regrouping);
   }
@@ -394,6 +421,12 @@ function createSettingsSheet(): HTMLElement {
   if (hasGrade("grade4")) {
     sheet.append(decimalPlace.label, fractionModes, decimalModes);
   }
+  sheet.append(rewardTheme.label);
+  sheet.append(el("p", "settings-note", rewardThemeById(save.settings.rewardTheme).provider === "giphy"
+    ? "GIPHY rewards load live and show GIPHY attribution."
+    : "Starter kitten rewards use the local curated media list."));
+  sheet.append(createRewardMediaTools());
+  sheet.append(createTeachingAidTools());
   sheet.append(motion, reset);
   overlay.append(sheet);
   return overlay;
@@ -408,6 +441,7 @@ function returnToLauncher(): void {
   session = null;
   selectedWrong = null;
   celebrating = false;
+  activeTeachingAid = null;
   screen = "launcher";
   feedback = "Pick a path to start.";
   render();
@@ -416,25 +450,12 @@ function returnToLauncher(): void {
 function startSession(path: PathId): void {
   const savedProgress = getSavedPathProgress(path);
   const seed = savedProgress?.seed ?? Math.floor(Math.random() * 0x100000000);
-  const promptIndex = Math.min(savedProgress?.promptIndex ?? 0, Math.max(0, save.settings.sessionLength - 1));
-  const firstPrompt = generatePrompt({
+  session = createSessionState({
     path,
     settings: save.settings,
-    promptIndex,
-    random: createSeededRandom(seed + promptIndex * 97),
-    recentPromptIds: savedProgress?.answeredPromptIds ?? []
-  });
-  session = {
-    path,
-    promptIndex,
     seed,
-    currentPrompt: firstPrompt,
-    correct: Math.min(savedProgress?.correct ?? 0, save.settings.sessionLength),
-    mistakes: savedProgress?.mistakes ?? 0,
-    streak: savedProgress?.streak ?? 0,
-    keypadValue: "",
-    answeredPromptIds: savedProgress?.answeredPromptIds ?? []
-  };
+    savedProgress
+  });
   selectedWrong = null;
   celebrating = false;
   lastRewardPiece = -1;
@@ -448,38 +469,47 @@ function answerPrompt(answer: AnswerValue): void {
   if (!session) {
     return;
   }
-  if (!validateAnswer(session.currentPrompt, answer)) {
-    selectedWrong = answer;
-    session.keypadValue = "";
+  const result = evaluateAnswer({
+    session,
+    answer,
+    settings: save.settings,
+    completedPrompts: save.completedPrompts,
+    revealedPieces: save.revealedPieces,
+    bestStreak: save.bestStreak,
+    revealPieces: REVEAL_PIECES,
+    correctFeedback: CORRECT_FEEDBACK,
+    nudgeFeedback: NUDGE_FEEDBACK
+  });
+
+  session = result.session;
+  if (result.kind === "incorrect") {
+    selectedWrong = result.selectedWrong;
     celebrating = false;
-    session.mistakes += 1;
-    session.streak = 0;
-    feedback = session.currentPrompt.hint || NUDGE_FEEDBACK[session.mistakes % NUDGE_FEEDBACK.length];
+    feedback = result.feedback;
+    const aid = teachingAidForContext(result.supportContext, save.settings);
+    if (aid && result.attempts >= 2) {
+      feedback += " Want to try a thinking step?";
+    }
     render();
     return;
   }
 
   selectedWrong = null;
-  session.keypadValue = "";
-  celebrating = true;
-  session.correct += 1;
-  session.streak += 1;
-  session.answeredPromptIds.push(session.currentPrompt.id);
-  const revealedPieces = save.revealedPieces + 1;
-  lastRewardPiece = (revealedPieces - 1) % REVEAL_PIECES;
+  celebrating = result.completionQuality === "clean";
+  lastRewardPiece = result.lastRewardPiece;
   save = {
     ...save,
-    completedPrompts: save.completedPrompts + 1,
-    revealedPieces,
-    bestStreak: Math.max(save.bestStreak, session.streak)
+    completedPrompts: result.completedPrompts,
+    revealedPieces: result.revealedPieces,
+    bestStreak: result.bestStreak
   };
-  feedback = CORRECT_FEEDBACK[(save.completedPrompts + session.streak) % CORRECT_FEEDBACK.length];
+  feedback = result.feedback;
 
-  if (session.promptIndex + 1 >= save.settings.sessionLength) {
+  if (result.completedSession) {
     save = {
       ...save,
       completedSessions: save.completedSessions + 1,
-      pathProgress: removeSavedPathProgress(save.pathProgress, session)
+      pathProgress: removeSavedPathProgress(save.pathProgress, session, save.settings)
     };
     persistSave();
     screen = "summary";
@@ -488,14 +518,6 @@ function answerPrompt(answer: AnswerValue): void {
     return;
   }
 
-  session.promptIndex += 1;
-  session.currentPrompt = generatePrompt({
-    path: session.path,
-    settings: save.settings,
-    promptIndex: session.promptIndex,
-    random: createSeededRandom(session.seed + session.promptIndex * 97),
-    recentPromptIds: session.answeredPromptIds
-  });
   save = {
     ...save,
     pathProgress: {
@@ -526,6 +548,418 @@ function updateSettings(next: Partial<MathSettings>): void {
   render();
 }
 
+function activeRewardMedia(): RewardMedia[] {
+  return visibleRewardMedia(save.settings, themedRewardMedia);
+}
+
+function openTeachingAid(aid: TeachingAid, stepIndex: number): void {
+  activeTeachingAid = { aid, stepIndex, preview: false };
+  if (session) {
+    session = markHelpUsed(session);
+  }
+  acknowledgeTeachingAid(aid.id, false);
+  void playActiveTeachingAidAudio();
+  render();
+}
+
+function previewTeachingAid(aid: TeachingAid): void {
+  activeTeachingAid = { aid, stepIndex: 0, preview: true };
+  void playActiveTeachingAidAudio();
+  render();
+}
+
+function acknowledgeTeachingAid(id: string, rerender = true): void {
+  if (!save.settings.seenTeachingAidIds.includes(id)) {
+    save = {
+      ...save,
+      settings: {
+        ...save.settings,
+        seenTeachingAidIds: [...save.settings.seenTeachingAidIds, id]
+      }
+    };
+    persistSave();
+  }
+  if (rerender) {
+    render();
+  }
+}
+
+function closeTeachingAid(): void {
+  activeTeachingAid = null;
+  cancelInstructionAudio();
+  render();
+}
+
+function playActiveTeachingAidAudio(): Promise<"audio" | "fallback" | "silent"> {
+  if (!activeTeachingAid) {
+    return Promise.resolve("silent");
+  }
+  const step = activeTeachingAid.aid.steps[Math.max(0, Math.min(activeTeachingAid.stepIndex, activeTeachingAid.aid.steps.length - 1))];
+  return playTeachingAidStepAudio(activeTeachingAid.aid, step);
+}
+
+function createTeachingAidPanel(aid: TeachingAid, stepIndex: number, preview: boolean): HTMLElement {
+  const overlay = el("div", "teaching-aid-overlay");
+  const panel = el("section", "teaching-aid-panel");
+  panel.setAttribute("aria-label", aid.title);
+  const step = aid.steps[Math.max(0, Math.min(stepIndex, aid.steps.length - 1))];
+  panel.append(el("p", "eyebrow", preview ? "Teaching aid preview" : "Think step"));
+  panel.append(el("h2", "", aid.title));
+  panel.append(el("h3", "", step.title));
+  const list = el("ul", "teaching-prompts");
+  for (const prompt of step.prompts.slice(0, 2)) {
+    list.append(el("li", "", prompt));
+  }
+  panel.append(list);
+  if (aid.reviewQuestion && step.kind === "check") {
+    panel.append(el("p", "settings-note", aid.reviewQuestion));
+  }
+  const activePrompt = preview ? null : session?.currentPrompt ?? null;
+  const media = teachingAidStepMedia(aid, step, activePrompt, preview);
+  if (media.length) {
+    panel.append(createTeachingAidMedia(media));
+  }
+  const actions = el("div", "summary-actions");
+  const close = buttonEl(preview ? "Back to settings" : "Back to problem", "secondary-action");
+  close.addEventListener("click", closeTeachingAid);
+  actions.append(close);
+  if (stepIndex + 1 < aid.steps.length) {
+    const next = buttonEl("Next step", "primary-action");
+    next.addEventListener("click", () => {
+      activeTeachingAid = { aid, stepIndex: stepIndex + 1, preview };
+      void playActiveTeachingAidAudio();
+      render();
+    });
+    actions.append(next);
+  }
+  panel.append(actions);
+  overlay.append(panel);
+  return overlay;
+}
+
+function createTeachingAidMedia(mediaItems: TeachingAidMedia[]): HTMLElement {
+  const wrapper = el("div", "teaching-aid-media");
+  for (const media of mediaItems) {
+    if (media.kind === "gif" || media.kind === "image") {
+      const image = document.createElement("img");
+      image.src = media.src;
+      image.alt = media.alt ?? "";
+      image.loading = "lazy";
+      wrapper.append(image);
+    } else if (media.kind === "video") {
+      const video = document.createElement("video");
+      video.src = media.src;
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.autoplay = true;
+      wrapper.append(video);
+    } else {
+      const audio = document.createElement("audio");
+      audio.src = media.src;
+      audio.controls = true;
+      wrapper.append(audio);
+    }
+    if (media.caption) {
+      wrapper.append(el("p", "settings-note", media.caption));
+    }
+  }
+  return wrapper;
+}
+
+async function loadSelectedRewardTheme(): Promise<void> {
+  const themeId = normalizeRewardThemeId(save.settings.rewardTheme) as RewardThemeId;
+  if (themeId === "kittens") {
+    themedRewardMedia = [];
+    rewardThemeStatus = "";
+    return;
+  }
+
+  try {
+    const loaded = await loadGiphyRewardMedia(themeId);
+    themedRewardMedia = loaded;
+    rewardThemeStatus = loaded.length > 0 ? "Powered by GIPHY" : "GIPHY key unavailable; showing kitten rewards.";
+  } catch {
+    themedRewardMedia = [];
+    rewardThemeStatus = "GIPHY rewards could not load; showing kitten rewards.";
+  }
+  render();
+}
+
+function createRewardMediaTools(): HTMLElement {
+  const section = el("section", "reward-media-tools");
+  const theme = rewardThemeById(save.settings.rewardTheme);
+  const isGiphyTheme = theme.provider === "giphy";
+  const mediaList = isGiphyTheme ? themedRewardMedia : REWARD_MEDIA;
+  const visibleCount = isGiphyTheme
+    ? mediaList.filter((media) => !isHiddenRewardMediaId(media.id)).length
+    : mediaList.length;
+  const heading = el("div", "settings-subhead");
+  heading.append(el("h3", "", isGiphyTheme ? "Reward GIFs" : "Reward videos"));
+  heading.append(el("span", "settings-note", String(visibleCount) + " available"));
+  section.append(heading);
+
+  if (rewardMediaMessage) {
+    section.append(el("p", "settings-note", rewardMediaMessage));
+  }
+
+  const viewed = mediaList.find((media) => media.id === viewedRewardMediaId);
+  if (viewed) {
+    section.append(createRewardMediaViewer(viewed));
+  }
+
+  if (mediaList.length === 0 && isGiphyTheme) {
+    section.append(el("p", "settings-note", rewardThemeStatus || "GIPHY rewards have not loaded yet."));
+    return section;
+  }
+
+  const list = el("div", "reward-media-list");
+  for (const media of mediaList) {
+    const hidden = isGiphyTheme && isHiddenRewardMediaId(media.id);
+    const row = el("div", "reward-media-row");
+    const preview = document.createElement("img");
+    preview.src = rewardPreviewSrc(media);
+    preview.alt = "";
+    preview.loading = "lazy";
+    const summary = el("span", "", media.title + " - " + mediaTypeLabel(media) + " - " + media.license + (hidden ? " - hidden" : ""));
+    const view = buttonEl("View", "secondary-action tiny-action");
+    view.addEventListener("click", () => {
+      viewedRewardMediaId = media.id;
+      rewardMediaMessage = "Viewing " + media.title + ".";
+      render();
+    });
+    row.append(preview, summary, view);
+    if (isGiphyTheme) {
+      const hide = buttonEl("Hide", "danger-action tiny-action");
+      hide.disabled = hidden || visibleCount <= 1;
+      hide.addEventListener("click", () => {
+        if (!window.confirm("Hide " + media.title + " from this reward theme?")) {
+          return;
+        }
+        if (visibleCount <= 1) {
+          rewardMediaMessage = "Reward theme needs at least one visible item.";
+          render();
+          return;
+        }
+        hideRewardMedia(media.id);
+        if (viewedRewardMediaId === media.id) {
+          viewedRewardMediaId = null;
+        }
+        rewardMediaMessage = media.title + " hidden.";
+        void sendRewardMediaReport("hide", media);
+        render();
+      });
+      row.append(hide);
+      if (hidden) {
+        const restore = buttonEl("Restore", "secondary-action tiny-action");
+        restore.addEventListener("click", () => {
+          restoreRewardMedia(media.id);
+          rewardMediaMessage = media.title + " restored.";
+          render();
+        });
+        row.append(restore);
+      }
+    }
+    list.append(row);
+  }
+  section.append(list);
+
+  if (isGiphyTheme) {
+    const restoreAll = buttonEl("Restore hidden GIFs", "secondary-action");
+    restoreAll.disabled = save.settings.hiddenRewardMediaIds.length === 0;
+    restoreAll.addEventListener("click", () => {
+      save = {
+        ...save,
+        settings: {
+          ...save.settings,
+          hiddenRewardMediaIds: []
+        }
+      };
+      persistSave();
+      rewardMediaMessage = "Hidden GIPHY rewards restored.";
+      render();
+    });
+    section.append(restoreAll);
+    section.append(el("p", "settings-note", "GIPHY items are hidden on this device only; source IDs stay in the curated set."));
+  }
+  return section;
+}
+
+function createTeachingAidTools(): HTMLElement {
+  const visibleCount = TEACHING_AIDS.filter((aid) => !isHiddenTeachingAidId(aid.id)).length;
+  const section = el("section", "teaching-aid-tools");
+  const heading = el("div", "settings-subhead");
+  heading.append(el("h3", "", "Teaching aids"));
+  heading.append(el("span", "settings-note", String(visibleCount) + " available"));
+  section.append(heading);
+
+  if (teachingAidMessage) {
+    section.append(el("p", "settings-note", teachingAidMessage));
+  }
+
+  const list = el("div", "teaching-aid-list");
+  for (const aid of TEACHING_AIDS) {
+    const hidden = isHiddenTeachingAidId(aid.id);
+    const row = el("div", "teaching-aid-row");
+    const details = el("span", "teaching-aid-summary");
+    details.append(
+      el("strong", "", aid.title + (hidden ? " - hidden" : "")),
+      el("span", "", aid.steps.map((step) => step.title).join(", "))
+    );
+    row.append(details);
+    const view = buttonEl("View", "secondary-action tiny-action");
+    view.addEventListener("click", () => previewTeachingAid(aid));
+    row.append(view);
+    if (hidden) {
+      const restore = buttonEl("Restore", "secondary-action tiny-action");
+      restore.addEventListener("click", () => restoreTeachingAid(aid.id));
+      row.append(restore);
+    } else {
+      const hide = buttonEl("Hide", "danger-action tiny-action");
+      hide.addEventListener("click", () => {
+        if (!window.confirm("Hide " + aid.title + " teaching aid on this device?")) {
+          return;
+        }
+        hideTeachingAid(aid);
+      });
+      row.append(hide);
+    }
+    list.append(row);
+  }
+  section.append(list);
+
+  const restoreAll = buttonEl("Restore hidden teaching aids", "secondary-action");
+  restoreAll.disabled = save.settings.hiddenTeachingAidIds.length === 0;
+  restoreAll.addEventListener("click", () => {
+    save = {
+      ...save,
+      settings: {
+        ...save.settings,
+        hiddenTeachingAidIds: []
+      }
+    };
+    persistSave();
+    teachingAidMessage = "Hidden teaching aids restored.";
+    render();
+  });
+  section.append(restoreAll);
+  section.append(el("p", "settings-note", "Teaching aids are hidden on this device only; the authored catalog stays in the app."));
+  return section;
+}
+
+function isHiddenTeachingAidId(id: string): boolean {
+  return save.settings.hiddenTeachingAidIds.includes(id);
+}
+
+function hideTeachingAid(aid: TeachingAid): void {
+  if (isHiddenTeachingAidId(aid.id)) {
+    return;
+  }
+  save = {
+    ...save,
+    settings: {
+      ...save.settings,
+      hiddenTeachingAidIds: [...save.settings.hiddenTeachingAidIds, aid.id]
+    }
+  };
+  if (activeTeachingAid?.aid.id === aid.id) {
+    activeTeachingAid = null;
+  }
+  persistSave();
+  teachingAidMessage = aid.title + " hidden.";
+  void sendTeachingAidReport("hide", aid);
+  render();
+}
+
+function restoreTeachingAid(id: string): void {
+  const aid = TEACHING_AIDS.find((item) => item.id === id);
+  save = {
+    ...save,
+    settings: {
+      ...save.settings,
+      hiddenTeachingAidIds: save.settings.hiddenTeachingAidIds.filter((item) => item !== id)
+    }
+  };
+  persistSave();
+  teachingAidMessage = (aid?.title ?? "Teaching aid") + " restored.";
+  render();
+}
+
+async function sendTeachingAidReport(_action: "hide" | "delete", _aid: TeachingAid): Promise<void> {
+  return Promise.resolve();
+}
+
+function createRewardMediaViewer(media: RewardMedia): HTMLElement {
+  const viewer = el("section", "reward-media-viewer");
+  let element: HTMLVideoElement | HTMLImageElement;
+  if (media.type === "video") {
+    const video = document.createElement("video");
+    video.src = media.src;
+    video.poster = media.poster ?? "";
+    video.controls = !isGiphyMedia(media);
+    video.autoplay = isGiphyMedia(media);
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    element = video;
+  } else {
+    const image = document.createElement("img");
+    image.src = media.src;
+    image.alt = media.title;
+    element = image;
+  }
+  const details = el("div", "reward-media-details");
+  details.append(el("h4", "", media.title));
+  details.append(el("p", "", mediaTypeLabel(media) + " - " + media.artist + " - " + media.license));
+  const close = buttonEl("Close", "secondary-action tiny-action");
+  close.addEventListener("click", () => {
+    viewedRewardMediaId = null;
+    rewardMediaMessage = "";
+    render();
+  });
+  details.append(close);
+  viewer.append(element, details);
+  return viewer;
+}
+
+function rewardPreviewSrc(media: RewardMedia): string {
+  return media.poster || media.src;
+}
+
+function mediaTypeLabel(media: RewardMedia): string {
+  if (isGiphyMedia(media)) {
+    return media.type === "video" ? "GIF" : "sticker";
+  }
+  return media.type === "video" ? "video" : "image";
+}
+
+function isHiddenRewardMediaId(id: string): boolean {
+  return isHiddenRewardMediaIdForSettings(save.settings, id);
+}
+
+function hideRewardMedia(id: string): void {
+  save = {
+    ...save,
+    settings: hideRewardMediaId(save.settings, id),
+    revealedPieces: 0
+  };
+  persistSave();
+}
+
+function restoreRewardMedia(id: string): void {
+  save = {
+    ...save,
+    settings: restoreRewardMediaId(save.settings, id),
+    revealedPieces: 0
+  };
+  persistSave();
+}
+
+async function sendRewardMediaReport(_action: "hide" | "delete", _media: RewardMedia): Promise<void> {
+  return Promise.resolve();
+}
+
 function updateGradeLane(gradeLane: GradeLane, enabled: boolean): void {
   const current = save.settings.gradeLanes;
   const next = enabled ? [...current, gradeLane] : current.filter((item) => item !== gradeLane);
@@ -534,14 +968,14 @@ function updateGradeLane(gradeLane: GradeLane, enabled: boolean): void {
   }
   updateSettings({
     gradeLanes: next,
-    enabledOperations: enabled ? uniqueOperations([...save.settings.enabledOperations, ...operationsForGrade(gradeLane)]) : save.settings.enabledOperations
+    enabledOperations: enabled ? uniqueOperations([...save.settings.enabledOperations, ...operationsForGradeLane(gradeLane)]) : save.settings.enabledOperations
   });
 }
 
 function getSavedPathProgress(path: PathId): PathProgress | null {
   const progress = save.pathProgress[pathProgressKey(path, gradeLaneForPath(path))];
   if (!progress || progress.correct >= save.settings.sessionLength) {
-    return fallbackSavedPathProgress(path);
+    return bestSavedPathProgress(save.pathProgress, path, save.settings.sessionLength);
   }
   return progress;
 }
@@ -560,34 +994,8 @@ function persistCurrentPathProgress(): void {
   persistSave();
 }
 
-function toPathProgress(current: SessionState, gradeLane: MathSettings["gradeLane"]): PathProgress {
-  return {
-    path: current.path,
-    gradeLane,
-    promptIndex: current.promptIndex,
-    seed: current.seed,
-    correct: current.correct,
-    mistakes: current.mistakes,
-    streak: current.streak,
-    answeredPromptIds: current.answeredPromptIds
-  };
-}
-
-function removeSavedPathProgress(progress: MathSave["pathProgress"], current: SessionState): MathSave["pathProgress"] {
-  const next = { ...progress };
-  delete next[pathProgressKey(current.path, current.currentPrompt.gradeLane)];
-  return next;
-}
-
 function pathProgressKey(path: PathId, gradeLane: MathSettings["gradeLane"]): string {
-  return pathProgressKeyFor(path, save.settings, gradeLane);
-}
-
-function fallbackSavedPathProgress(path: PathId): PathProgress | null {
-  const candidates = Object.values(save.pathProgress)
-    .filter((progress) => progress.path === path && progress.correct < save.settings.sessionLength)
-    .sort((a, b) => b.correct - a.correct || b.promptIndex - a.promptIndex);
-  return candidates[0] ?? null;
+  return sessionPathProgressKey(path, save.settings, gradeLane);
 }
 
 function persistSave(): void {
@@ -663,37 +1071,6 @@ function appendConfettiOnce(parent: HTMLElement): void {
   celebrating = false;
 }
 
-function createGemGrid(count: number): HTMLElement {
-  const grid = el("div", "gem-grid");
-  for (let index = 0; index < count; index += 1) {
-    grid.append(el("span", "count-gem"));
-  }
-  return grid;
-}
-
-function createGroupGrid(groups: number[]): HTMLElement {
-  const wrapper = el("div", "group-grid");
-  groups.forEach((count, groupIndex) => {
-    const group = el("div", "visual-group");
-    group.setAttribute("aria-label", "Group " + String(groupIndex + 1) + " has " + String(count));
-    for (let index = 0; index < count; index += 1) {
-      group.append(el("span", "mini-counter"));
-    }
-    wrapper.append(group);
-  });
-  return wrapper;
-}
-
-function createArrayGrid(rows: number, columns: number): HTMLElement {
-  const grid = el("div", "array-grid");
-  grid.style.setProperty("--columns", String(columns));
-  grid.setAttribute("aria-label", String(rows) + " rows and " + String(columns) + " columns");
-  for (let index = 0; index < rows * columns; index += 1) {
-    grid.append(el("span", "mini-counter"));
-  }
-  return grid;
-}
-
 function createChoiceGrid(prompt: MathPrompt): HTMLElement {
   const choices = el("div", "answer-grid");
   for (const choice of prompt.choices) {
@@ -737,88 +1114,6 @@ function updateKeypad(key: string): void {
   }
   selectedWrong = null;
   render();
-}
-
-function createFractionVisual(colored: number, total: number): HTMLElement {
-  const wrapper = el("div", "fraction-visual");
-  wrapper.setAttribute("aria-label", String(colored) + " colored parts out of " + String(total));
-  for (let index = 0; index < total; index += 1) {
-    const part = el("span", index < colored ? "fraction-part is-colored" : "fraction-part");
-    wrapper.append(part);
-  }
-  return wrapper;
-}
-
-function createPartVisual(model: PartModel): HTMLElement {
-  const wrapper = el("div", model.total === 100 ? "part-model hundredths-model" : "part-model");
-  wrapper.setAttribute("aria-label", partAria(model));
-  if (model.label) {
-    wrapper.append(el("span", "part-label", model.label));
-  }
-  const grid = el("div", model.kind === "decimal" ? "part-grid decimal-grid" : "part-grid fraction-grid");
-  grid.style.setProperty("--parts", String(model.total));
-  grid.style.setProperty("--columns", String(model.total === 100 ? 10 : model.total));
-  for (let index = 0; index < model.total; index += 1) {
-    grid.append(el("span", index < model.colored ? "part-cell is-colored" : "part-cell"));
-  }
-  wrapper.append(grid);
-  return wrapper;
-}
-
-function createCompareVisual(left: PartModel, right: PartModel): HTMLElement {
-  const wrapper = el("div", "part-compare");
-  wrapper.append(createPartVisual({ ...left, label: "A: " + (left.label ?? "") }));
-  wrapper.append(createPartVisual({ ...right, label: "B: " + (right.label ?? "") }));
-  return wrapper;
-}
-
-function createEquivalentVisual(models: [PartModel, PartModel]): HTMLElement {
-  const wrapper = el("div", "part-equivalent");
-  wrapper.append(createPartVisual(models[0]));
-  wrapper.append(createPartVisual(models[1]));
-  return wrapper;
-}
-
-function createOperationVisual(left: PartModel, right: PartModel, result: PartModel, operator: "+" | "-"): HTMLElement {
-  const wrapper = el("div", "part-operation");
-  wrapper.append(createPartVisual(left));
-  wrapper.append(el("span", "operator-mark", operator));
-  wrapper.append(createPartVisual(right));
-  wrapper.append(el("span", "operator-mark", "="));
-  const answerSlot = el("div", result.total === 100 ? "part-model hundredths-model answer-slot" : "part-model answer-slot");
-  answerSlot.setAttribute("aria-label", "Choose the result");
-  answerSlot.append(el("span", "part-label", "?"));
-  wrapper.append(answerSlot);
-  return wrapper;
-}
-
-function partAria(model: PartModel): string {
-  const unit = model.total === 100 ? "hundred" : model.total === 10 ? "ten" : String(model.total);
-  return String(model.colored) + " colored parts out of " + unit + " equal parts";
-}
-
-function allowedOperationsForSettings(settings: MathSettings): Operation[] {
-  return uniqueOperations(settings.gradeLanes.flatMap(operationsForGrade));
-}
-
-function operationsForGrade(gradeLane: GradeLane): Operation[] {
-  if (gradeLane === "kindergarten") {
-    return ["count", "add", "subtract"];
-  }
-  if (gradeLane === "grade1") {
-    return ["add", "subtract"];
-  }
-  if (gradeLane === "grade2") {
-    return ["add", "subtract", "placeValue", "skipCount", "groups"];
-  }
-  if (gradeLane === "grade3") {
-    return ["multiply", "divide", "arrays"];
-  }
-  return ["fraction", "decimal"];
-}
-
-function uniqueOperations(values: readonly Operation[]): Operation[] {
-  return [...new Set(values)];
 }
 
 function hasGrade(gradeLane: GradeLane): boolean {
@@ -1065,6 +1360,39 @@ function numberControl(labelText: string, value: number, min: number, max: numbe
   input.value = String(value);
   label.append(el("span", "", labelText), input);
   return { label, input };
+}
+
+function stepperControl(labelText: string, value: number, min: number, max: number, onChange: (value: number) => void): HTMLElement {
+  const wrapper = el("div", "text-control");
+  const label = el("span", "", labelText);
+  const labelId = "control-" + labelText.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  label.id = labelId;
+  const controls = el("span", "stepper-control");
+  const decrement = buttonEl("-", "stepper-button");
+  decrement.setAttribute("aria-label", "Decrease " + labelText);
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = String(min);
+  input.max = String(max);
+  input.step = "1";
+  input.value = String(value);
+  input.readOnly = true;
+  input.setAttribute("aria-labelledby", labelId);
+  const increment = buttonEl("+", "stepper-button");
+  increment.setAttribute("aria-label", "Increase " + labelText);
+  const update = (next: number) => {
+    const bounded = Math.max(min, Math.min(max, next));
+    if (bounded !== value) {
+      onChange(bounded);
+    }
+  };
+  decrement.disabled = value <= min;
+  increment.disabled = value >= max;
+  decrement.addEventListener("click", () => update(value - 1));
+  increment.addEventListener("click", () => update(value + 1));
+  controls.append(decrement, input, increment);
+  wrapper.append(label, controls);
+  return wrapper;
 }
 
 function createModeChecks<T extends string>(legend: string, options: Array<[T, string]>, selected: T[], onChange: (selected: T[]) => void): HTMLElement {

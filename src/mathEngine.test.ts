@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { validateInstructionAudioManifest } from "./instructionAudio";
 import { buildChoices, createSeededRandom, eligiblePaths, generatePrompt, normalizeSettings, validateAnswer } from "./mathEngine";
+import { getActiveReward, hideRewardMediaId, REVEAL_PIECES, restoreRewardMediaId, visibleRewardMedia } from "./rewardProgress";
+import { REWARD_MEDIA } from "./rewardMedia";
+import { normalizeHiddenRewardMediaIds, normalizeRewardThemeId, REWARD_THEMES, rewardThemeById } from "./rewardThemes";
 import { DEFAULT_SAVE, canUseStorage, getLastLoadSaveStatus, loadSave, pathProgressKeyFor, resetSave, saveGame } from "./save";
+import { bestSavedPathProgress, createSessionState, evaluateAnswer, markHelpUsed, pathProgressKey, removeSavedPathProgress, toPathProgress } from "./sessionFlow";
+import { TEACHING_AIDS, teachingAidForPrompt, teachingAidStepMedia } from "./teachingAids";
+import { teachingAidStepAudioSrc, validateTeachingAidAudioManifest } from "./teachingAidAudio";
+import teachingManifestData from "./teachingAidAudioManifest.json";
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -61,6 +68,18 @@ describe("Math to Reveal engine", () => {
 
   it("keeps instruction audio manifest valid", () => {
     expect(validateInstructionAudioManifest()).toEqual([]);
+    expect(validateTeachingAidAudioManifest()).toEqual([]);
+    const manifest = teachingManifestData as { entries: Array<{ id: string; text: string; src: string }> };
+    for (const aid of TEACHING_AIDS) {
+      for (const step of aid.steps) {
+        const src = teachingAidStepAudioSrc(aid, step);
+        if (manifest.entries.length === 0) {
+          expect(src).toBeNull();
+        } else {
+          expect(src).toMatch(/^\/audio\/math\/teaching\/.+\.wav$/);
+        }
+      }
+    }
   });
 
   it("generates subtraction prompts without negative answers", () => {
@@ -109,6 +128,27 @@ describe("Math to Reveal engine", () => {
     expect(loadSave(storage).pathProgress).toEqual({});
     expect(resetSave(storage, save.settings).completedPrompts).toBe(0);
     expect(loadSave(storage).settings.enabledOperations).toEqual(["count"]);
+    expect(loadSave(storage).settings.attemptsToReward).toBe(2);
+    expect(normalizeSettings({ attemptsToReward: -1 }).attemptsToReward).toBe(0);
+    expect(normalizeSettings({ attemptsToReward: 99 }).attemptsToReward).toBe(3);
+    expect(normalizeSettings({ seenTeachingAidIds: ["addition-within-20", "bad", "addition-within-20"] }).seenTeachingAidIds).toEqual(["addition-within-20"]);
+    expect(normalizeSettings({ hiddenTeachingAidIds: ["fraction-parts", "bad"] }).hiddenTeachingAidIds).toEqual(["fraction-parts"]);
+  });
+
+  it("normalizes reward themes for local and GIPHY-backed rewards", () => {
+    expect(normalizeSettings({ rewardTheme: "dinosaurs" }).rewardTheme).toBe("dinosaurs");
+    expect(normalizeSettings({ rewardTheme: "starWars" }).rewardTheme).toBe("starWars");
+    expect(normalizeSettings({ hiddenRewardMediaIds: ["giphy-a", "bad", "giphy-a"] }).hiddenRewardMediaIds).toEqual(["giphy-a"]);
+    expect(normalizeSettings({ rewardTheme: "bad" as never }).rewardTheme).toBe("kittens");
+    expect(rewardThemeById("dinosaurs").label).toBe("Dinosaurs");
+    expect(normalizeRewardThemeId("bad")).toBe("kittens");
+    expect(REWARD_THEMES.find((theme) => theme.id === "dinosaurs")?.giphyIds).toHaveLength(10);
+    expect(REWARD_THEMES.find((theme) => theme.id === "dinosaurStickers")?.giphyKind).toBe("sticker");
+    expect(REWARD_THEMES.find((theme) => theme.id === "starWars")?.giphyIds).toHaveLength(10);
+    expect(REWARD_THEMES.find((theme) => theme.id === "monsterTrucks")?.giphyIds).toHaveLength(10);
+    expect(REWARD_THEMES.find((theme) => theme.id === "constructionEquipment")?.giphyIds).toHaveLength(10);
+    expect(REWARD_THEMES.find((theme) => theme.id === "bugs")?.giphyIds).toHaveLength(10);
+    expect(normalizeHiddenRewardMediaIds(["giphy-a", "nope", "giphy-a", "giphy-b"])).toEqual(["giphy-a", "giphy-b"]);
   });
 
   it("handles corrupted and partial localStorage saves", () => {
@@ -342,6 +382,322 @@ describe("Math to Reveal engine", () => {
     resetSave(storage, save.settings);
     expect(loadSave(storage).pathProgress).toEqual({});
   });
+
+  it("computes answer outcomes and session advancement without DOM state", () => {
+    const settings = normalizeSettings({ gradeLane: "grade1", enabledOperations: ["add"], sessionLength: 3 });
+    const session = createSessionState({ path: "add", settings, savedProgress: null, seed: 22 });
+    const wrong = evaluateAnswer({
+      session,
+      answer: -1,
+      settings,
+      completedPrompts: 4,
+      revealedPieces: 2,
+      bestStreak: 1,
+      revealPieces: REVEAL_PIECES,
+      correctFeedback: ["Correct"],
+      nudgeFeedback: ["Try again"]
+    });
+
+    expect(wrong.kind).toBe("incorrect");
+    expect(wrong.session.mistakes).toBe(1);
+    expect(wrong.session.streak).toBe(0);
+    expect(wrong.session.promptAttempts).toBe(1);
+    expect(wrong.session.keypadValue).toBe("");
+    expect(wrong.helpAvailable).toBe(true);
+    expect(wrong.supportContext.operation).toBe("add");
+
+    const correct = evaluateAnswer({
+      session,
+      answer: session.currentPrompt.metadata.answer,
+      settings,
+      completedPrompts: 4,
+      revealedPieces: 2,
+      bestStreak: 1,
+      revealPieces: REVEAL_PIECES,
+      correctFeedback: ["Correct"],
+      nudgeFeedback: ["Try again"]
+    });
+
+    expect(correct.kind).toBe("correct");
+    if (correct.kind !== "correct") {
+      throw new Error("expected correct answer result");
+    }
+    expect(correct.completedPrompts).toBe(5);
+    expect(correct.revealedPieces).toBe(3);
+    expect(correct.lastRewardPiece).toBe(2);
+    expect(correct.completionQuality).toBe("clean");
+    expect(correct.bestStreak).toBe(1);
+    expect(correct.completedSession).toBe(false);
+    expect(correct.session.promptIndex).toBe(1);
+    expect(correct.session.promptAttempts).toBe(0);
+    expect(correct.session.answeredPromptIds).toContain(session.currentPrompt.id);
+  });
+
+  it("marks repeated-miss completions helped without reward or mastery credit", () => {
+    const settings = normalizeSettings({ gradeLane: "grade1", enabledOperations: ["add"], attemptsToReward: 1 });
+    const session = createSessionState({ path: "add", settings, savedProgress: null, seed: 42 });
+    const firstMiss = evaluateAnswer({
+      session,
+      answer: -1,
+      settings,
+      completedPrompts: 7,
+      revealedPieces: 4,
+      bestStreak: 3,
+      revealPieces: REVEAL_PIECES,
+      correctFeedback: ["Correct"],
+      nudgeFeedback: ["Try another way."]
+    });
+    expect(firstMiss.kind).toBe("incorrect");
+    if (firstMiss.kind !== "incorrect") {
+      throw new Error("expected first miss");
+    }
+    const secondMiss = evaluateAnswer({
+      session: firstMiss.session,
+      answer: -2,
+      settings,
+      completedPrompts: 7,
+      revealedPieces: 4,
+      bestStreak: 3,
+      revealPieces: REVEAL_PIECES,
+      correctFeedback: ["Correct"],
+      nudgeFeedback: ["Try another way."]
+    });
+    expect(secondMiss.kind).toBe("incorrect");
+    if (secondMiss.kind !== "incorrect") {
+      throw new Error("expected second miss");
+    }
+    expect(secondMiss.attempts).toBe(2);
+    expect(secondMiss.feedback).toBe("Pause and check the numbers.");
+
+    const helped = evaluateAnswer({
+      session: secondMiss.session,
+      answer: session.currentPrompt.metadata.answer,
+      settings,
+      completedPrompts: 7,
+      revealedPieces: 4,
+      bestStreak: 3,
+      revealPieces: REVEAL_PIECES,
+      correctFeedback: ["Correct"],
+      nudgeFeedback: ["Try another way."]
+    });
+
+    expect(helped.kind).toBe("correct");
+    if (helped.kind !== "correct") {
+      throw new Error("expected helped completion");
+    }
+    expect(helped.completionQuality).toBe("helped");
+    expect(helped.completedPrompts).toBe(7);
+    expect(helped.revealedPieces).toBe(4);
+    expect(helped.bestStreak).toBe(3);
+    expect(helped.lastRewardPiece).toBe(-1);
+    expect(helped.session.streak).toBe(0);
+    expect(helped.session.promptIndex).toBe(1);
+  });
+
+  it("applies attempts-to-reward thresholds across the four-choice range", () => {
+    for (const attemptsToReward of [0, 1, 2, 3]) {
+      for (const misses of [0, 1, 2, 3]) {
+        const settings = normalizeSettings({ gradeLane: "grade1", enabledOperations: ["add"], attemptsToReward });
+        let session = createSessionState({ path: "add", settings, savedProgress: null, seed: 100 + attemptsToReward * 10 + misses });
+        for (let index = 0; index < misses; index += 1) {
+          const miss = evaluateAnswer({
+            session,
+            answer: -1 - index,
+            settings,
+            completedPrompts: 0,
+            revealedPieces: 0,
+            bestStreak: 0,
+            revealPieces: REVEAL_PIECES,
+            correctFeedback: ["Correct"],
+            nudgeFeedback: ["Try another way."]
+          });
+          if (miss.kind !== "incorrect") {
+            throw new Error("expected miss");
+          }
+          session = miss.session;
+        }
+        const result = evaluateAnswer({
+          session,
+          answer: session.currentPrompt.metadata.answer,
+          settings,
+          completedPrompts: 0,
+          revealedPieces: 0,
+          bestStreak: 0,
+          revealPieces: REVEAL_PIECES,
+          correctFeedback: ["Correct"],
+          nudgeFeedback: ["Try another way."]
+        });
+        if (result.kind !== "correct") {
+          throw new Error("expected correct");
+        }
+        const clean = misses <= attemptsToReward;
+        expect(result.completionQuality, `AtoR ${attemptsToReward}, misses ${misses}`).toBe(clean ? "clean" : "helped");
+        expect(result.completedPrompts).toBe(clean ? 1 : 0);
+        expect(result.revealedPieces).toBe(clean ? 1 : 0);
+      }
+    }
+  });
+
+  it("looks up local teaching aids and suppresses hidden aids", () => {
+    expect(TEACHING_AIDS.map((aid) => aid.id)).toContain("counting-small-groups");
+
+    const addSettings = normalizeSettings({ gradeLane: "grade1", enabledOperations: ["add"] });
+    const addPrompt = generatePrompt({ path: "add", settings: addSettings, promptIndex: 0, random: createSeededRandom(18) });
+    expect(teachingAidForPrompt(addPrompt, addSettings)?.id).toBe("addition-within-20");
+    expect(teachingAidForPrompt(addPrompt, normalizeSettings({ ...addSettings, hiddenTeachingAidIds: ["addition-within-20"] }))).toBeNull();
+
+    const fractionSettings = normalizeSettings({ gradeLane: "grade4", enabledOperations: ["fraction"], fractionModes: ["name"] });
+    const fractionPrompt = generatePrompt({ path: "fractions", settings: fractionSettings, promptIndex: 0, random: createSeededRandom(19) });
+    expect(teachingAidForPrompt(fractionPrompt, fractionSettings)?.id).toBe("fraction-parts");
+
+    const decimalSettings = normalizeSettings({ gradeLane: "grade4", enabledOperations: ["decimal"], decimalModes: ["name"] });
+    const decimalPrompt = generatePrompt({ path: "decimals", settings: decimalSettings, promptIndex: 0, random: createSeededRandom(20) });
+    expect(teachingAidForPrompt(decimalPrompt, decimalSettings)?.id).toBe("decimal-place-value");
+  });
+
+  it("keeps every teaching-aid step paired with a local graphic", () => {
+    for (const aid of TEACHING_AIDS) {
+      for (const step of aid.steps) {
+        expect(step.media?.length, aid.id + " " + step.kind).toBeGreaterThan(0);
+        const graphic = step.media?.find((media) => media.kind === "image");
+        expect(graphic?.src, aid.id + " " + step.kind).toMatch(/^data:image\/svg\+xml,/);
+        expect(graphic?.alt, aid.id + " " + step.kind).toBeTruthy();
+        const previewGraphic = teachingAidStepMedia(aid, step, null, true).find((media) => media.kind === "image");
+        expect(previewGraphic?.alt, aid.id + " " + step.kind).toMatch(/^Example:/);
+        expect(previewGraphic?.caption, aid.id + " " + step.kind).toMatch(/Example picture/);
+      }
+    }
+  });
+
+  it("renders prompt-aware teaching-aid graphics for active math prompts", () => {
+    const addSettings = normalizeSettings({ gradeLane: "grade1", enabledOperations: ["add"] });
+    const addPrompt = {
+      ...generatePrompt({ path: "add", settings: addSettings, promptIndex: 0, random: createSeededRandom(18) }),
+      question: "7 + 0 = ?",
+      metadata: {
+        ...generatePrompt({ path: "add", settings: addSettings, promptIndex: 0, random: createSeededRandom(18) }).metadata,
+        left: 7,
+        right: 0,
+        answer: 7
+      }
+    };
+    const addAid = TEACHING_AIDS.find((aid) => aid.id === "addition-within-20");
+    const addCheck = addAid?.steps.find((step) => step.kind === "check");
+    expect(addCheck?.prompts.join(" ")).toContain("add zero");
+    const addSvg = decodeDataSvg(teachingAidStepMedia(addAid!, addCheck!, addPrompt)[0].src);
+    expect(addSvg).toContain("Adding zero keeps");
+    expect(addSvg).not.toMatch(/bigger than both/i);
+
+    const skipSettings = normalizeSettings({ gradeLane: "grade2", enabledOperations: ["skipCount"] });
+    const skipPrompt = {
+      ...generatePrompt({ path: "skipCount", settings: skipSettings, promptIndex: 0, random: createSeededRandom(4) }),
+      question: "6, 8, ?, 12",
+      metadata: {
+        ...generatePrompt({ path: "skipCount", settings: skipSettings, promptIndex: 0, random: createSeededRandom(4) }).metadata,
+        step: 2,
+        answer: 10
+      }
+    };
+    const skipAid = TEACHING_AIDS.find((aid) => aid.id === "skip-count-patterns");
+    const skipSvg = decodeDataSvg(teachingAidStepMedia(skipAid!, skipAid!.steps[0], skipPrompt)[0].src);
+    expect(skipSvg).toContain("+2");
+    expect(skipSvg).not.toContain("+5");
+
+    const divideSettings = normalizeSettings({ gradeLane: "grade3", enabledOperations: ["divide"] });
+    const dividePrompt = generatePrompt({ path: "divide", settings: divideSettings, promptIndex: 0, random: createSeededRandom(7) });
+    const groupsAid = TEACHING_AIDS.find((aid) => aid.id === "groups-arrays");
+    const divideSvg = decodeDataSvg(teachingAidStepMedia(groupsAid!, groupsAid!.steps[0], dividePrompt)[0].src);
+    expect(divideSvg).toMatch(/Share into equal groups|Use the fact family/);
+
+    const tenthsSettings = normalizeSettings({ gradeLane: "grade4", enabledOperations: ["decimal"], decimalModes: ["name"], decimalPlace: "tenths" });
+    const tenthsPrompt = generatePrompt({ path: "decimals", settings: tenthsSettings, promptIndex: 0, random: createSeededRandom(20) });
+    const decimalAid = TEACHING_AIDS.find((aid) => aid.id === "decimal-place-value");
+    const tenthsSvg = decodeDataSvg(teachingAidStepMedia(decimalAid!, decimalAid!.steps[2], tenthsPrompt)[0].src);
+    expect(tenthsSvg).toContain("tenths");
+    expect(tenthsSvg).not.toContain("hundredths");
+
+    const fractionSettings = normalizeSettings({ gradeLane: "grade4", enabledOperations: ["fraction"], fractionModes: ["equivalent"] });
+    const fractionPrompt = generatePrompt({ path: "fractions", settings: fractionSettings, promptIndex: 0, random: createSeededRandom(12) });
+    const fractionAid = TEACHING_AIDS.find((aid) => aid.id === "fraction-parts");
+    const fractionSvg = decodeDataSvg(teachingAidStepMedia(fractionAid!, fractionAid!.steps[1], fractionPrompt)[0].src);
+    expect(fractionSvg).toContain("Compare the amount");
+  });
+
+  it("keeps teaching-aid wording focused on learning quality", () => {
+    const banned = [/bigger than both/i, /word shape/i, /high score/i, /score penalty/i, /punishment/i];
+    for (const aid of TEACHING_AIDS) {
+      for (const step of aid.steps) {
+        const text = [
+          aid.title,
+          aid.buttonLabel,
+          ...step.prompts,
+          ...(step.media ?? []).flatMap((media) => [media.alt ?? "", media.caption ?? ""])
+        ].join(" ");
+        for (const phrase of banned) {
+          expect(text, aid.id + " " + step.kind).not.toMatch(phrase);
+        }
+      }
+    }
+  });
+
+  it("marks teaching-aid completions helped without reward or mastery credit", () => {
+    const settings = normalizeSettings({ gradeLane: "grade1", enabledOperations: ["add"], attemptsToReward: 3 });
+    const session = markHelpUsed(createSessionState({ path: "add", settings, savedProgress: null, seed: 55 }));
+    const result = evaluateAnswer({
+      session,
+      answer: session.currentPrompt.metadata.answer,
+      settings,
+      completedPrompts: 2,
+      revealedPieces: 2,
+      bestStreak: 2,
+      revealPieces: REVEAL_PIECES,
+      correctFeedback: ["Correct"],
+      nudgeFeedback: ["Try again"]
+    });
+
+    expect(result.kind).toBe("correct");
+    if (result.kind !== "correct") {
+      throw new Error("expected correct");
+    }
+    expect(result.helpUsed).toBe(true);
+    expect(result.completionQuality).toBe("helped");
+    expect(result.completedPrompts).toBe(2);
+    expect(result.revealedPieces).toBe(2);
+    expect(result.bestStreak).toBe(2);
+    expect(result.session.helpUsed).toBe(false);
+  });
+
+  it("keeps session progress save keys and cleanup testable without rendering", () => {
+    const settings = normalizeSettings({ gradeLanes: ["grade1", "grade2"], enabledOperations: ["add"], sessionLength: 5 });
+    const session = createSessionState({ path: "add", settings, savedProgress: null, seed: 33 });
+    const progress = toPathProgress(session, session.currentPrompt.gradeLane);
+    const key = pathProgressKey(session.path, settings, session.currentPrompt.gradeLane);
+    const save = {
+      ...DEFAULT_SAVE,
+      settings,
+      pathProgress: {
+        [key]: progress,
+        old: { ...progress, promptIndex: 1, correct: 1 }
+      }
+    };
+
+    expect(bestSavedPathProgress(save.pathProgress, "add", settings.sessionLength)?.seed).toBe(33);
+    expect(removeSavedPathProgress(save.pathProgress, session, settings)[key]).toBeUndefined();
+  });
+
+  it("computes reward reveal progress and hidden media filtering outside views", () => {
+    const settings = normalizeSettings({ rewardTheme: "dinosaurs", hiddenRewardMediaIds: ["giphy-hidden"] });
+    const media = [
+      { ...REWARD_MEDIA[0], id: "giphy-visible", license: "Powered by GIPHY" },
+      { ...REWARD_MEDIA[1], id: "giphy-hidden", license: "Powered by GIPHY" }
+    ];
+
+    expect(getActiveReward(0, REWARD_MEDIA).visiblePieces).toBe(0);
+    expect(getActiveReward(REVEAL_PIECES + 1, REWARD_MEDIA).visiblePieces).toBe(1);
+    expect(visibleRewardMedia(settings, media).map((item) => item.id)).toEqual(["giphy-visible"]);
+    expect(hideRewardMediaId(settings, "giphy-visible").hiddenRewardMediaIds).toContain("giphy-visible");
+    expect(restoreRewardMediaId(settings, "giphy-hidden").hiddenRewardMediaIds).toEqual([]);
+  });
 });
 
 function partModels(prompt: ReturnType<typeof generatePrompt>) {
@@ -359,4 +715,9 @@ function partModels(prompt: ReturnType<typeof generatePrompt>) {
     parts.push(prompt.visualOperation.left, prompt.visualOperation.right, prompt.visualOperation.result);
   }
   return parts;
+}
+
+function decodeDataSvg(src: string): string {
+  expect(src).toMatch(/^data:image\/svg\+xml,/);
+  return decodeURIComponent(src.replace(/^data:image\/svg\+xml,/, ""));
 }

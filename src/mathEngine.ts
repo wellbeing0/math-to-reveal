@@ -1,3 +1,5 @@
+import { normalizeTeachingAidIds } from "./teachingAids";
+
 export type GradeLane = "kindergarten" | "grade1" | "grade2" | "grade3" | "grade4";
 export type Operation =
   | "count"
@@ -30,6 +32,14 @@ export type DecimalPlace = "tenths" | "hundredths";
 export type FractionMode = "name" | "match" | "compare" | "equivalent" | "addSubtract";
 export type DecimalMode = "name" | "match" | "compare" | "equivalent" | "addSubtract";
 export type PartModelKind = "fraction" | "decimal";
+export type RewardThemeId =
+  | "kittens"
+  | "dinosaurs"
+  | "dinosaurStickers"
+  | "starWars"
+  | "monsterTrucks"
+  | "constructionEquipment"
+  | "bugs";
 
 export interface PartModel {
   kind: PartModelKind;
@@ -52,6 +62,11 @@ export interface MathSettings {
   decimalPlace: DecimalPlace;
   fractionModes: FractionMode[];
   decimalModes: DecimalMode[];
+  rewardTheme: RewardThemeId;
+  hiddenRewardMediaIds: string[];
+  attemptsToReward: number;
+  seenTeachingAidIds: string[];
+  hiddenTeachingAidIds: string[];
 }
 
 export interface MathPrompt {
@@ -112,7 +127,12 @@ export const DEFAULT_SETTINGS: MathSettings = {
   enableDecimals: false,
   decimalPlace: "tenths",
   fractionModes: ["name", "match", "compare"],
-  decimalModes: ["name", "match", "compare"]
+  decimalModes: ["name", "match", "compare"],
+  rewardTheme: "kittens",
+  hiddenRewardMediaIds: [],
+  attemptsToReward: 2,
+  seenTeachingAidIds: [],
+  hiddenTeachingAidIds: []
 };
 
 export function createSeededRandom(seed: number): RandomSource {
@@ -168,8 +188,32 @@ export function normalizeSettings(value: Partial<MathSettings> | null | undefine
     enableDecimals,
     decimalPlace: value?.decimalPlace === "hundredths" ? "hundredths" : "tenths",
     fractionModes: normalizeModes(value?.fractionModes, ["name", "match", "compare"], allFractionModes),
-    decimalModes: normalizeModes(value?.decimalModes, ["name", "match", "compare"], allDecimalModes)
+    decimalModes: normalizeModes(value?.decimalModes, ["name", "match", "compare"], allDecimalModes),
+    rewardTheme: normalizeRewardThemeId(value?.rewardTheme),
+    hiddenRewardMediaIds: normalizeHiddenRewardMediaIds(value?.hiddenRewardMediaIds),
+    attemptsToReward: clampInteger(value?.attemptsToReward, 2, 0, 3),
+    seenTeachingAidIds: normalizeTeachingAidIds(value?.seenTeachingAidIds),
+    hiddenTeachingAidIds: normalizeTeachingAidIds(value?.hiddenTeachingAidIds)
   };
+}
+
+function normalizeRewardThemeId(value: unknown): RewardThemeId {
+  return value === "dinosaurs"
+    || value === "dinosaurStickers"
+    || value === "starWars"
+    || value === "monsterTrucks"
+    || value === "constructionEquipment"
+    || value === "bugs"
+    ? value
+    : "kittens";
+}
+
+function normalizeHiddenRewardMediaIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const ids = value.filter((item): item is string => typeof item === "string" && item.startsWith("giphy-"));
+  return [...new Set(ids)].slice(0, 200);
 }
 
 export function generatePrompt(request: PromptRequest): MathPrompt {
