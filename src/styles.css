@@ -355,10 +355,13 @@ h3 {
 .question {
   display: grid;
   place-items: center;
-  min-height: 112px;
-  font-size: clamp(3rem, 10vw, 6.8rem);
+  min-height: 86px;
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-wrap: balance;
+  font-size: clamp(2rem, 4.2vw, 3rem);
   font-weight: 950;
-  line-height: 1;
+  line-height: 1.08;
 }
 
 .gem-grid {
@@ -468,12 +471,12 @@ h3 {
 }
 
 .hundredths-model .part-grid {
-  width: min(360px, 100%);
-  gap: 3px;
+  width: min(300px, 100%);
+  gap: 2px;
 }
 
 .hundredths-model .part-cell {
-  min-height: 24px;
+  min-height: 16px;
   border-width: 1px;
   border-radius: 4px;
 }
@@ -1085,6 +1088,11 @@ h3 {
   .prompt-panel {
     min-height: 190px;
     padding: 16px;
+  }
+
+  .question {
+    min-height: 76px;
+    font-size: clamp(1.85rem, 7vw, 2.75rem);
   }
 
   .question-row {
