@@ -1,4 +1,4 @@
-# Math to Reveal OSS Release Notes - 2026-05-28
+# Math to Reveal v0.2.0 OSS Release Notes - 2026-05-28
 
 This release brings the public Math to Reveal app up to date with the latest OSS-safe gameplay improvements while keeping the repository static-hostable and free of private deployment details or generated private assets.
 

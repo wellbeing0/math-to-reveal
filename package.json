@@ -1,6 +1,6 @@
 {
   "name": "math-to-reveal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Browser-first elementary math practice with video reveal rewards.",
   "license": "MIT",
   "type": "module",
