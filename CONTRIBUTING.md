@@ -1,6 +1,6 @@
 # Contributing
 
-Math to Reveal is developed first in a private canonical repo, then exported to a sanitized public repo for releases.
+Math Rewards is developed first in a private canonical repo, then exported to a sanitized public repo for releases.
 
 ## Local Setup
 

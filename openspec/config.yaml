@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Project: math-to-reveal, a browser-first elementary math practice game.
+  Project: math-rewards, a browser-first elementary math practice game.
   Audience: early elementary children, primarily playing on tablets and phones.
   Stack target: TypeScript, Vite, Vitest, Playwright unless implementation later chooses otherwise.
   Initial status: public source release.

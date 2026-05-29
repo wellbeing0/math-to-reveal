@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security reports
-    url: https://github.com/wellbeing0/math-to-reveal/security/advisories/new
+    url: https://github.com/wellbeing0/math-rewards/security/advisories/new
     about: Please report security issues privately.

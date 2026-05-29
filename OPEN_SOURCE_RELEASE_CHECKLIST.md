@@ -9,7 +9,7 @@ Use this checklist before creating or updating the public release repo.
 - [x] Canonical source through v0.1.0: private repo.
 - [x] Public reward media: one Pexels video sample.
 - [x] Public instruction audio: browser speech fallback.
-- [x] Public repo name and location confirmed: `wellbeing0/math-to-reveal`.
+- [x] Public repo name and location confirmed: `wellbeing0/math-rewards`.
 
 ## Local Gates
 

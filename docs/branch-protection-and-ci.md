@@ -91,7 +91,7 @@ GitHub ruleset documentation:
 
 Recommended UI path:
 
-1. Open `https://github.com/wellbeing0/math-to-reveal/settings/rules`.
+1. Open `https://github.com/wellbeing0/math-rewards/settings/rules`.
 2. Choose **New ruleset**.
 3. Choose **New branch ruleset**.
 4. Name it `Protect main`.

@@ -1,7 +1,7 @@
 # math-practice-core Specification
 
 ## Purpose
-Define Math to Reveal's deterministic prompt generation, child-facing practice lanes, answer input, retry behavior, and session progression.
+Define Math Rewards's deterministic prompt generation, child-facing practice lanes, answer input, retry behavior, and session progression.
 ## Requirements
 ### Requirement: Grade and skill lane selection
 The system SHALL support adult-configured Kindergarten, Grade 1, Grade 2, Grade 3, and Grade 4 math practice lanes while presenting child-facing choices in simple play-path language.

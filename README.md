@@ -1,6 +1,6 @@
-# Math to Reveal
+# Math Rewards
 
-Math to Reveal is a browser-first elementary math practice game. Children solve short math sessions and reveal pieces of a reward video as they answer correctly.
+Math Rewards is a browser-first elementary math practice game. Children solve short math sessions and reveal pieces of a reward video as they answer correctly.
 
 ## Features
 
@@ -34,7 +34,7 @@ Run a local dev server:
 
     npm run dev
 
-To enable the optional workbench handoff control in a build, set `VITE_WORKBENCH_HANDOFF_URL` to a same-origin or absolute URL that accepts Math to Reveal handoff query parameters.
+To enable the optional workbench handoff control in a build, set `VITE_WORKBENCH_HANDOFF_URL` to a same-origin or absolute URL that accepts Math Rewards handoff query parameters.
 
 ## Static Hosting
 

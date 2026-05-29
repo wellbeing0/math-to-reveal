@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const saveKey = "math-to-reveal-save-v1";
+const saveKey = "math-rewards-save-v1";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -171,7 +171,7 @@ test("child can complete a short addition session and reveal video pieces", asyn
   await setShortSession(page);
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Math to Reveal" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Math Rewards" })).toBeVisible();
   await expect(page.locator(".grade-badge")).toHaveText("1st");
   await expect(page.getByText("Choose a path")).toBeVisible();
   await page.getByRole("button", { name: /Add/ }).tap();

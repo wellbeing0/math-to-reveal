@@ -1,6 +1,6 @@
-# Math to Reveal v0.3.0 OSS Release Notes - 2026-05-29
+# Math Rewards v0.3.0 OSS Release Notes - 2026-05-29
 
-This release updates the public Math to Reveal app with the OSS-safe improvements made since `v0.2.0`, while keeping the repo static-hostable and free of private deployment routes, generated private audio, and private reward catalogs.
+This release updates the public Math Rewards app with the OSS-safe improvements made since `v0.2.0`, while keeping the repo static-hostable and free of private deployment routes, generated private audio, and private reward catalogs.
 
 ## Highlights
 

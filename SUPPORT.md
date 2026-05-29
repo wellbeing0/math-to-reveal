@@ -1,6 +1,6 @@
 # Support
 
-Math to Reveal is a small open source educational game. Support is handled through GitHub issues.
+Math Rewards is a small open source educational game. Support is handled through GitHub issues.
 
 ## Questions And Bugs
 

@@ -12,4 +12,4 @@ Do not file public issues for secrets, bypasses, private deployment details, or 
 
 ## Scope
 
-Math to Reveal is a static browser app. It should not require runtime secrets, paid APIs, telemetry, accounts, or cloud sync for public gameplay.
+Math Rewards is a static browser app. It should not require runtime secrets, paid APIs, telemetry, accounts, or cloud sync for public gameplay.

@@ -90,7 +90,7 @@ function createShell(): HTMLElement {
   const title = el("div", "title-block");
   title.append(el("p", "eyebrow", "Early math game"));
   const heading = el("h1", "title-row");
-  heading.append(document.createTextNode("Math to Reveal"), el("span", "grade-badge", currentGradeBadge()));
+  heading.append(document.createTextNode("Math Rewards"), el("span", "grade-badge", currentGradeBadge()));
   title.append(heading);
   title.append(el("p", "lede", "Solve one problem at a time and uncover the video."));
 
@@ -101,7 +101,7 @@ function createShell(): HTMLElement {
 
   const demoLink = document.createElement("a");
   demoLink.className = "demo-link math-command";
-  demoLink.href = "./rewards/math-to-reveal-oss-demo.mp4";
+  demoLink.href = "./rewards/math-rewards-oss-demo.mp4";
   demoLink.append(commandLabel("video", "Demo"));
   demoLink.setAttribute("aria-label", "Play demo video");
 
@@ -413,7 +413,7 @@ function createSettingsSheet(): HTMLElement {
 
   const reset = commandButton("Reset math progress", "danger-action", "reset");
   reset.addEventListener("click", () => {
-    if (window.confirm("Reset Math to Reveal progress?")) {
+    if (window.confirm("Reset Math Rewards progress?")) {
       save = { ...DEFAULT_SAVE, settings: save.settings };
       persistSave();
       screen = "launcher";

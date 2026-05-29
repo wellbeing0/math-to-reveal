@@ -1,6 +1,6 @@
 # Asset Policy
 
-Math to Reveal source is MIT licensed. Media and generated audio can have different terms and must be documented separately.
+Math Rewards source is MIT licensed. Media and generated audio can have different terms and must be documented separately.
 
 ## Public Release Assets
 

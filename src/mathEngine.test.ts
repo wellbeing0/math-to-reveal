@@ -53,7 +53,7 @@ class ThrowingStorage implements Storage {
   }
 }
 
-describe("Math to Reveal engine", () => {
+describe("Math Rewards engine", () => {
   it("generates deterministic addition prompts within first-grade bounds", () => {
     const settings = normalizeSettings({ gradeLane: "grade1", maxAddend: 10, maxAnswer: 20 });
     const first = generatePrompt({ path: "add", settings, promptIndex: 0, random: createSeededRandom(12) });
@@ -153,14 +153,14 @@ describe("Math to Reveal engine", () => {
 
   it("handles corrupted and partial localStorage saves", () => {
     const corrupted = new MemoryStorage();
-    corrupted.setItem("math-to-reveal-save-v1", "not-json");
+    corrupted.setItem("math-rewards-save-v1", "not-json");
     expect(loadSave(corrupted)).toEqual(DEFAULT_SAVE);
     expect(getLastLoadSaveStatus()).toBe("corrupt-recovered");
-    expect(corrupted.getItem("math-to-reveal-save-v1")).toBeNull();
-    expect(Array.from({ length: corrupted.length }, (_, index) => corrupted.key(index)).some((key) => key?.startsWith("math-to-reveal-save-v1-broken-"))).toBe(true);
+    expect(corrupted.getItem("math-rewards-save-v1")).toBeNull();
+    expect(Array.from({ length: corrupted.length }, (_, index) => corrupted.key(index)).some((key) => key?.startsWith("math-rewards-save-v1-broken-"))).toBe(true);
 
     const partial = new MemoryStorage();
-    partial.setItem("math-to-reveal-save-v1", JSON.stringify({
+    partial.setItem("math-rewards-save-v1", JSON.stringify({
       completedPrompts: "4",
       revealedPieces: 2,
       settings: {
@@ -179,6 +179,29 @@ describe("Math to Reveal engine", () => {
     expect(loaded.settings.gradeLane).toBe("grade2");
     expect(loaded.settings.maxAnswer).toBe(20);
     expect(loaded.pathProgress).toEqual({});
+  });
+
+  it("migrates legacy Math to Reveal saves to the Math Rewards key", () => {
+    const storage = new MemoryStorage();
+    storage.setItem("math-to-reveal-save-v1", JSON.stringify({
+      version: 4,
+      completedPrompts: 8,
+      completedSessions: 1,
+      revealedPieces: 6,
+      bestStreak: 3,
+      settings: {
+        gradeLane: "grade2",
+        enabledOperations: ["add"],
+        maxAnswer: 20
+      }
+    }));
+
+    const loaded = loadSave(storage);
+
+    expect(loaded.completedPrompts).toBe(8);
+    expect(loaded.settings.gradeLane).toBe("grade2");
+    expect(storage.getItem("math-to-reveal-save-v1")).toBeNull();
+    expect(JSON.parse(storage.getItem("math-rewards-save-v1") ?? "{}").completedPrompts).toBe(8);
   });
 
   it("keeps gameplay usable when browser storage throws", () => {
@@ -331,7 +354,7 @@ describe("Math to Reveal engine", () => {
 
   it("migrates current saved progress while adding new conservative settings", () => {
     const storage = new MemoryStorage();
-    storage.setItem("math-to-reveal-save-v1", JSON.stringify({
+    storage.setItem("math-rewards-save-v1", JSON.stringify({
       version: 1,
       completedPrompts: 11,
       completedSessions: 2,

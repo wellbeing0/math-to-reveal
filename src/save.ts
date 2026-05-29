@@ -21,8 +21,8 @@ export interface MathSave {
   pathProgress: Record<string, PathProgress>;
 }
 
-const SAVE_KEY = "math-to-reveal-save-v1";
-const BROKEN_SAVE_PREFIX = SAVE_KEY + "-broken-";
+const SAVE_KEY = "math-rewards-save-v1";
+const LEGACY_SAVE_KEY = "math-to-reveal-save-v1";
 
 export type SaveLoadStatus = "ok" | "corrupt-recovered" | "storage-unavailable";
 
@@ -40,10 +40,10 @@ export const DEFAULT_SAVE: MathSave = {
 
 export function loadSave(storage: Storage): MathSave {
   lastLoadStatus = "ok";
-  let raw: string | null = null;
+  let loaded: { key: string; raw: string } | null = null;
   try {
-    raw = storage.getItem(SAVE_KEY);
-    if (!raw) {
+    loaded = readRawSave(storage);
+    if (!loaded) {
       return DEFAULT_SAVE;
     }
   } catch {
@@ -52,8 +52,8 @@ export function loadSave(storage: Storage): MathSave {
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<MathSave>;
-    return {
+    const parsed = JSON.parse(loaded.raw) as Partial<MathSave>;
+    const normalized: MathSave = {
       version: 5,
       settings: normalizeSettings(parsed.settings),
       completedPrompts: clampNonNegative(parsed.completedPrompts),
@@ -62,9 +62,13 @@ export function loadSave(storage: Storage): MathSave {
       bestStreak: clampNonNegative(parsed.bestStreak),
       pathProgress: normalizePathProgress(parsed.pathProgress)
     };
+    if (loaded.key === LEGACY_SAVE_KEY) {
+      migrateLegacySave(storage, normalized);
+    }
+    return normalized;
   } catch {
     lastLoadStatus = "corrupt-recovered";
-    preserveCorruptedSave(storage, raw);
+    preserveCorruptedSave(storage, loaded.key, loaded.raw);
     return DEFAULT_SAVE;
   }
 }
@@ -89,7 +93,7 @@ export function resetSave(storage: Storage, keepSettings: MathSettings): MathSav
 }
 
 export function canUseStorage(storage: Storage): boolean {
-  const testKey = "math-to-reveal-storage-test";
+  const testKey = "math-rewards-storage-test";
   try {
     storage.setItem(testKey, "1");
     storage.removeItem(testKey);
@@ -99,10 +103,33 @@ export function canUseStorage(storage: Storage): boolean {
   }
 }
 
-function preserveCorruptedSave(storage: Storage, raw: string): void {
+function readRawSave(storage: Storage): { key: string; raw: string } | null {
+  const current = storage.getItem(SAVE_KEY);
+  if (current) {
+    return { key: SAVE_KEY, raw: current };
+  }
+
+  const legacy = storage.getItem(LEGACY_SAVE_KEY);
+  if (legacy) {
+    return { key: LEGACY_SAVE_KEY, raw: legacy };
+  }
+
+  return null;
+}
+
+function migrateLegacySave(storage: Storage, save: MathSave): void {
   try {
-    storage.setItem(BROKEN_SAVE_PREFIX + String(Date.now()), raw);
-    storage.removeItem(SAVE_KEY);
+    storage.setItem(SAVE_KEY, JSON.stringify(save));
+    storage.removeItem(LEGACY_SAVE_KEY);
+  } catch {
+    // If migration fails, later saves still target the new Math Rewards key.
+  }
+}
+
+function preserveCorruptedSave(storage: Storage, sourceKey: string, raw: string): void {
+  try {
+    storage.setItem(sourceKey + "-broken-" + String(Date.now()), raw);
+    storage.removeItem(sourceKey);
   } catch {
     // If storage is unavailable, keep gameplay usable with in-memory defaults.
   }

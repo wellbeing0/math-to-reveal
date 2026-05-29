@@ -79,7 +79,7 @@ The system SHALL default new Grade 2/3 settings to readable, low-friction practi
 - **THEN** regrouping, fractions, decimals, broader factor ranges, mixed review, and optional challenge settings are visible as adult choices rather than child launcher clutter
 
 ### Requirement: Save migration preserves existing progress
-The system SHALL migrate existing Math to Reveal local saves without losing accepted first-slice progress.
+The system SHALL migrate existing Math Rewards local saves without losing accepted first-slice progress.
 
 #### Scenario: Existing save loads after Grade 2/3 update
 - **WHEN** the app loads a current K/1 save

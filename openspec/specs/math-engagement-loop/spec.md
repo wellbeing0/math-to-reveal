@@ -1,7 +1,7 @@
 # math-engagement-loop Specification
 
 ## Purpose
-Define the short-session reward loop, feedback style, world reactions, and repeat-play motivation for Math to Reveal.
+Define the short-session reward loop, feedback style, world reactions, and repeat-play motivation for Math Rewards.
 ## Requirements
 ### Requirement: Short practice sessions
 The system SHALL organize child math play into short sessions with visible progress and a simple completion state.
