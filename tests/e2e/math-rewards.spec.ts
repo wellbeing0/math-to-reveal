@@ -470,6 +470,28 @@ test("adult settings can combine grade lanes across boundaries", async ({ page }
   expect(stored.settings.gradeLanes).toEqual(["grade1", "grade2", "grade4"]);
 });
 
+test("adult settings allow every grade lane while keeping one selected", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open adult settings" }).tap();
+  await page.getByLabel("Kindergarten").check();
+  await page.getByLabel("Second grade").check();
+  await page.getByLabel("Third grade").check();
+  await page.getByLabel("Fourth grade").check();
+  await expect(page.getByLabel("Kindergarten")).toBeChecked();
+  await expect(page.getByLabel("First grade")).toBeChecked();
+  await expect(page.getByLabel("Second grade")).toBeChecked();
+  await expect(page.getByLabel("Third grade")).toBeChecked();
+  await expect(page.getByLabel("Fourth grade")).toBeChecked();
+
+  await page.getByLabel("Kindergarten").uncheck();
+  await page.getByLabel("First grade").uncheck();
+  await page.getByLabel("Second grade").uncheck();
+  await page.getByLabel("Third grade").uncheck();
+  await expect(page.getByLabel("Fourth grade")).toBeChecked();
+  await expect(page.getByLabel("Fourth grade")).toBeDisabled();
+});
+
 test("second grade lane uses keypad for two-digit addition and choices for place value", async ({ page }) => {
   await setGradeSession(page, "grade2", ["add", "subtract", "placeValue", "skipCount", "groups"]);
   await page.goto("/");

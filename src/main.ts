@@ -344,6 +344,7 @@ function createSettingsSheet(): HTMLElement {
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = save.settings.gradeLanes.includes(gradeLane);
+    input.disabled = input.checked && save.settings.gradeLanes.length === 1;
     input.addEventListener("change", () => updateGradeLane(gradeLane, input.checked));
     label.append(input, el("span", "", labelText));
     gradeControls.append(label);
@@ -973,8 +974,9 @@ async function sendRewardMediaReport(_action: "hide" | "delete", _media: RewardM
 
 function updateGradeLane(gradeLane: GradeLane, enabled: boolean): void {
   const current = save.settings.gradeLanes;
-  const next = enabled ? [...current, gradeLane] : current.filter((item) => item !== gradeLane);
+  const next = enabled ? [...new Set([...current, gradeLane])] : current.filter((item) => item !== gradeLane);
   if (next.length === 0) {
+    render();
     return;
   }
   updateSettings({
